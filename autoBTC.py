@@ -1,260 +1,180 @@
 #!/usr/bin/python3
-# -*- coding: iso-8859-1 -*-
+# -*- coding: utf-8 -*-
 
 import argparse
+from typing import NamedTuple
 import os
 import sys
 import time
-import pyautogui
+# import pyautogui
 import subprocess
 import json
+import requests
 from datetime import datetime
 from random import random
 from colored import stylize
 import colored
 from collections import namedtuple
 from dataclasses import dataclass
+from requests.sessions import session
+# from tabulate import tabulate
+import tabulate
 
-from bs4 import BeautifulSoup
+tabulate.PRESERVE_WHITESPACE = True
 
-fore = colored.fore()
+from bs4 import BeautifulSoup, UnicodeDammit
 
-SavedData = namedtuple('SavedData', ['captcha_position', 'roll_position', 'load_time', 'logs'])
+
+class SavedData(NamedTuple):
+    posRoll: tuple
+    accounts: dict
+
+
+Account = namedtuple(
+    'Account', ['id', 'current_balance', 'current_rp_balance', 'logs'])
 # Log = namedtuple('Log', ['timestamp', 'rp_balance', 'btc_balance', 'rp_gained', 'btc_gained'])
 
-@dataclass
-class Log:
-    timestamp : str
-    rp_balance : int
-    btc_balance : int
-    rp_gained : int
-    btc_gained : int
 
-def isPageOpened():
-    return subprocess.getoutput('wmctrl -lp | grep FreeBitco.in') != ''
+class Log(NamedTuple):
+    timestamp: str
+    rp_balance: int
+    btc_balance: int
+    rp_gained: int
+    btc_gained: int
 
-def focusOrOpenPage():
-
-    if(not isPageOpened()):
-        os.system('firefox --new-window https://freebitco.in &')
-        print('Waiting for browser to open')
-        while(not isPageOpened()):
-            time.sleep(1)
-        time.sleep(load_time)
+def coloredValue(value, format='{:+}'):
+    if value > 0:
+        return stylize(format.format(value), colored.fore.GREEN)
+    elif value < 0:
+        return stylize(format.format(value), colored.fore.RED)
     else:
-        os.system('wmctrl -a FreeBitco.in')
-        time.sleep(1)
-        pyautogui.press('f5')
-        print('Waiting for page to load')
-        time.sleep(load_time)
-    
-    print('freebitco.in page is ready')
+        return format.format(value)
 
-def checkRollTime():
-    output = subprocess.getoutput('wmctrl -lp | grep FreeBitco.in').split()
-    if not output:
-        return
+# class teste(NamedTuple):
+#     value: int
+#     log: Log
 
-    # win_code = output[0]
-    # pid = int(output[2])
-    if output[4] == 'FreeBitco.in':
-        return 0
+
+# l = Log(*[1, 2, 3, 4, 5])
+
+# t = teste(1, l)
+
+# print(t)
+# print(dir(t))
+
+payload = {
+
+}
+
+h = {
+    # "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+    # "Accept": "text/html",
+    # "Accept-Encoding": "gzip, deflate, br",
+    "Accept-Language": "pt-BR,pt;q=0.8,en-US;q=0.5,en;q=0.3",
+    "Cache-Control": "max-age=0",
+    "Connection": "keep-alive",
+    "Cookie": "__cfduid=df018db9b079168ae9361f82fec5bc2bb1620266270; btc_address=1CJ4vvSJefSpSb3v1k5xnxtEySBD1sBtGU; password=363acd1f069ecf92f61efb54be8072a1eeda3adab881cfc3577ca2661556ee06; have_account=1; login_auth=PcZ0ZH11rmArIQ152kKpwsjf; cookieconsent_dismissed=yes; last_play=1620437896; csrf_token=6i3P7X9eccgO",
+    "Host": "freebitco.in",
+    # "TE": "Trailers",
+    # "Upgrade-Insecure-Requests": "1",
+    "User-Agent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:88.0) Gecko/20100101 Firefox/88.0"
+}
+
+
+c = {
+    "__cfduid": "df018db9b079168ae9361f82fec5bc2bb1620266270",
+    "btc_address": "1CJ4vvSJefSpSb3v1k5xnxtEySBD1sBtGU",
+    "cookieconsent_dismissed": "yes",
+    "csrf_token": "kzV6O2m3xrwu",
+    "have_account": "1",
+    # "last_play": "1620437896",
+    "login_auth": "PcZ0ZH11rmArIQ152kKpwsjf",
+    "password": "363acd1f069ecf92f61efb54be8072a1eeda3adab881cfc3577ca2661556ee06"
+}
+
+h2={
+    "Cookie": "__cfduid=d6d66739ea723b7e7b31e65579f1c23451620345821; have_account=1; login_auth=IpisF3uQjMNRglupS5YgxboO; cookieconsent_dismissed=yes; last_play=1621782731; csrf_token=2ijwVeB3kVxL; btc_address=19bJKkqJdhwKE11UJDkRkNkkvqDrXQArx; password=d87603930f1f4c00426a29ea75923bbf0819161134ac3bb2a82f6829af566fdd",
+    "User-Agent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:88.0) Gecko/20100101 Firefox/88.0"
+}
+
+def coloredValue(value, format='{:+}'):
+    if value > 0:
+        return stylize(format.format(value), colored.fore.GREEN)
+    elif value < 0:
+        return stylize(format.format(value), colored.fore.RED)
     else:
-        roll_time = datetime.strptime(output[4], '%Mm:%Ss')
-        return roll_time.minute * 60 + roll_time.second
+        return format.format(value)
 
-def parsePage():
-    focusOrOpenPage()
+def render(clear=False):
+    if(clear):
+        print('\033[11A')
     
-    pyautogui.hotkey('ctrl', 'u')
-    time.sleep(0.5)
+    print(tabulate.tabulate([
+        [tabulate.tabulate(user_info , tablefmt='presto')],
+        [tabulate.tabulate(table, tablefmt='presto')],
+        [output]], tablefmt='fancy_grid'))
 
-    pyautogui.press('f5')
-    time.sleep(5)
-    
-    pyautogui.hotkey('ctrl', 'a')
-    time.sleep(0.5)
 
-    pyautogui.hotkey('ctrl', 'c')
-    time.sleep(0.5)
+# session = requests.Session()
+# response = session.get('https://freebitco.in', headers=h2)
 
-    pyautogui.hotkey('ctrl', 'w')
-    time.sleep(0.5)
+# f = open('page', 'w')
+# f.write(response.text)
+# f.close()
+f = open('page')
+text = f.read()
+f.close()
 
-    # pyautogui.hotkey('alt', 'tab')
 
-    html = subprocess.getoutput('xclip -o')
-    soup = BeautifulSoup(html, 'html.parser')
-    balance = round(float(soup.select_one('#balance_small').text)*100000000)
-    RP = int(soup.select_one('.user_reward_points').text.replace(',', ''))
-    user_id = soup.select_one('span.left:nth-child(2)').text
+btc_start = 0.00001489
+rp_start = 4570
+bonus_start = 33.52
 
-    return user_id, RP, balance
+btc_last = 0.00001500
+rp_last = 4577
+bonus_last = 30.23
 
-captcha_position = None
-roll_position = None
-load_time = 10
-logs = {}
+soup = BeautifulSoup(text, 'html.parser')
 
-def saveData():
-    fd = open('saved_data.json', 'w')
-    json.dump(SavedData(captcha_position, roll_position, load_time, logs)._asdict(), fd, indent=2)
-    fd.close()
+btc_balance_str = soup.select_one('#balance_small').text
+btc_balance = float(btc_balance_str)
+satoshi_balance = int(btc_balance_str.replace('.', ''))
+rp_balance = int(soup.select_one('.user_reward_points').text.replace(',', ''))
+user_id = soup.select_one('span.left:nth-child(2)').text
+promotion = soup.select_one('.free_play_bonus_box_span_large').text
+bonus_percentage = float(soup.select_one('#fp_bonus_req_completed').text)
 
-def wait(seconds, what_for=''):
-    print('Waiting %d minutes'%(seconds//60+1), what_for, ' ', flush=True, end='')
-    time.sleep(seconds%60)
-    print('\r', end='')
-    seconds -= (seconds%60)
-    while(seconds>60):
-        print('Waiting %d minutes'%(seconds//60), what_for, ' ', flush=True, end='')
-        time.sleep(60)
-        print('\r', end='')
-        seconds -= 60
-    while(seconds):
-        print('Waiting %d seconds'%(seconds%60), what_for, ' ', flush=True,  end='')
-        time.sleep(1)
-        print('\r', end='')
-        seconds -= 1
-    print('Ready', what_for, ' '*20)
+btc_session_change = btc_balance - btc_start
+rp_session_change = rp_balance - rp_start
+bonus_session_change = bonus_percentage - bonus_start
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-                description="""Script to automate rolls for FreeBitco.in """)
-    
-    commandGroup = parser.add_argument_group('actions')
-    commandGroup.add_argument('-l',"-logs",  action='store_true', dest='logs',
-        help="Show logs and exit")
-    commandGroup.add_argument('-s',"-set",  action='store_true', dest='set',
-        help="Set click positions for CAPTCHA checkbox and ROLL button")
-    commandGroup.add_argument('-r', "-run",  action='store_true', dest='run',
-        help="Run script with current configurations")
-                                    
-    args = parser.parse_args()
-    print(args)
+btc_last_change = btc_balance - btc_last
+rp_last_change = rp_balance - rp_last
+bonus_last_change = bonus_percentage - bonus_last
 
-    if(os.path.isfile('saved_data.json')):
-        fd = open('saved_data.json')
-        captcha_position, roll_position, load_time, logs = SavedData(**json.load(fd))
-        fd.close()
-        print('\'saved_data.json\' file loaded')
 
-    else:
-        print('Saved data file not found')
-        # data = SavedData(None, None, 10, {})
-        # fd = open('saved_data.json', 'w')
-        # json.dump(SavedData(None, None, 10, {})._asdict(), fd, indent=2)
-        # fd.close()
-        captcha_position = None
-        roll_position = None
-        load_time = 10
-        logs = {}
-        saveData()
-        print('\'saved_data.json\' file created')
 
-    print()
-    try:
-        if(args.logs):
-            for user in logs:
-                print(user)
-                for log in logs[user]:
-                    pass
-                    # timestamp, RP, balance = log
-                    # log[0] = datetime.fromtimestamp(log[0]).isoformat()
+user_info =[['User', user_id]]
 
-            saveData()
-            exit()
-        
-        # openOrFocusPage()
+label = ['', 'BTC', 'RP', u'Bônus']
+balance = ['Current balance', btc_balance_str, rp_balance, '{:.2f}'.format(bonus_percentage)]
+session_change = ['Session change', coloredValue(btc_session_change, '{:+.8f}'), coloredValue(rp_session_change), coloredValue(bonus_session_change, '{:+.2f}%')]
+last_change = ['Last change', coloredValue(btc_last_change, '{:+.8f}'), coloredValue(rp_last_change), coloredValue(bonus_last_change, '{:+.2f}%')]
 
-        print('Checking current balance')
-        user, last_rp, last_balance = parsePage()
-        pyautogui.keyDown('altleft'); pyautogui.press('tab'); pyautogui.keyUp('altleft')
 
-        roll_wait = checkRollTime()
-        if(roll_wait):
-            wait(roll_wait, 'for next roll')
-        
-        if(args.set):
-            focusOrOpenPage()
+table=[
+    label,
+    balance,
+    session_change,
+    last_change,
+]
 
-            print('Setting click positions')
+output = 'Game roll successful at 12:12:11, -2 satoshi and 18 RP earned'
+output = ' '*50
 
-            for i in range(load_time*10, 0, -1):
-                current = pyautogui.position()
-                print('Mouse over CAPTCHA checkbox position and wait %f seconds (%d, %d)'
-                    %(i/10, current.x, current.y), end='', flush=True)
-                time.sleep(0.1)
-                print('\r', end='')
-            captcha_position = pyautogui.position()
-            print('CAPTCHA position set at (%d, %d)'%captcha_position, ' '*20)
-            
-            for i in range(load_time*10, 0, -1):
-                current = pyautogui.position()
-                print('Mouse over ROLL button position and wait %f seconds (%d, %d)'
-                    %(i/10, current.x, current.y), end='', flush=True)
-                time.sleep(0.1)
-                print('\r', end='')
-            roll_position = pyautogui.position()
-            print('ROLL position set at (%d, %d)'%roll_position, ' '*20)
+render()
+output = 'change'
+output = output+(' '*(50-len(output)))
+time.sleep(5)
+render(True)
 
-            # fd = open('saved_data.json', 'w')
-            # json.dump(SavedData(captcha_position, roll_position, load_time, logs)._asdict(), fd, indent=2)
-            # fd.close()
-            saveData()
-            print('Settings saved')
-
-        # print('Starting roll loop')
-
-        if(args.run):
-            while(True):
-
-                focusOrOpenPage()
-                pyautogui.press('end')
-                time.sleep(1)
-
-                print('Attempting to click on CAPTCHA at', tuple(captcha_position))
-                pyautogui.moveTo(captcha_position)
-                time.sleep(random())
-                pyautogui.click()
-                print('Waiting for captcha to solve...')
-                time.sleep(load_time*(1+random()))
-
-                print('Attempting to click on roll at', tuple(roll_position))
-                pyautogui.moveTo(roll_position)
-                time.sleep(random())
-                pyautogui.click()
-                print('Waiting for game to roll...')
-                roll_timestamp = datetime.now()
-                time.sleep(load_time*(1+random()))
-
-                roll_wait = checkRollTime()
-                
-                if(roll_wait):
-                    user, rp, balance = parsePage()
-                    print(stylize('Game roll successful at %s, %d satoshi and %d RP earned'%
-                                (roll_timestamp.strftime('%H:%M:%S'), balance-last_balance, rp-last_rp),
-                                fore.GREEN))
-                    print('BTC balance: %d\tRP balance: %d'%(balance, rp))
-                    #pyautogui.press('f5')
-                    #time.sleep(load_time)
-                    if user not in logs:
-                        logs[user] = []
-                    logs[user].append((roll_timestamp.isoformat(), rp, balance, rp-last_rp, balance-last_balance))
-                    last_balance = balance
-                    last_rp = rp
-                    saveData()
-                    print('Operation logged\n')
-
-                    pyautogui.keyDown('altleft'); pyautogui.press('tab'); pyautogui.keyUp('altleft')
-                    wait(checkRollTime(), 'for next roll')
-                    # print()
-                else:
-                    print(stylize('Game roll failed', fore.RED))
-                    print('Reloading page and trying again')
-                    # pyautogui.press('f5')
-                #print()
-                
-    
-    except KeyboardInterrupt:
-        print ('\nScript ended by user!')        
