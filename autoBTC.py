@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
 
+from bs4 import BeautifulSoup, UnicodeDammit
 import argparse
 from typing import NamedTuple
 import os
@@ -22,8 +23,6 @@ import tabulate
 
 tabulate.PRESERVE_WHITESPACE = True
 
-from bs4 import BeautifulSoup, UnicodeDammit
-
 
 class SavedData(NamedTuple):
     posRoll: tuple
@@ -42,7 +41,8 @@ class Log(NamedTuple):
     rp_gained: int
     btc_gained: int
 
-def coloredValue(value, format='{:+}'):
+
+def colorChange(value, format='{:+}'):
     if value > 0:
         return stylize(format.format(value), colored.fore.GREEN)
     elif value < 0:
@@ -92,26 +92,28 @@ c = {
     "password": "363acd1f069ecf92f61efb54be8072a1eeda3adab881cfc3577ca2661556ee06"
 }
 
-h2={
+h2 = {
     "Cookie": "__cfduid=d6d66739ea723b7e7b31e65579f1c23451620345821; have_account=1; login_auth=IpisF3uQjMNRglupS5YgxboO; cookieconsent_dismissed=yes; last_play=1621782731; csrf_token=2ijwVeB3kVxL; btc_address=19bJKkqJdhwKE11UJDkRkNkkvqDrXQArx; password=d87603930f1f4c00426a29ea75923bbf0819161134ac3bb2a82f6829af566fdd",
     "User-Agent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:88.0) Gecko/20100101 Firefox/88.0"
 }
 
-def coloredValue(value, format='{:+}'):
-    if value > 0:
+def colorChange(value, base=0, format='{:+}'):
+    if value > base:
         return stylize(format.format(value), colored.fore.GREEN)
-    elif value < 0:
+    elif value < base:
         return stylize(format.format(value), colored.fore.RED)
     else:
         return format.format(value)
 
+
 def render(clear=False):
     if(clear):
         print('\033[11A')
-    
+
     print(tabulate.tabulate([
-        [tabulate.tabulate(user_info , tablefmt='presto')],
-        [tabulate.tabulate(table, tablefmt='presto')],
+        [tabulate.tabulate(user_info, tablefmt='presto')],
+        [tabulate.tabulate(btc_info, tablefmt='presto')],
+        [tabulate.tabulate(table, tablefmt='presto', colalign=("right",))],
         [output]], tablefmt='fancy_grid'))
 
 
@@ -126,15 +128,27 @@ text = f.read()
 f.close()
 
 
-btc_start = 0.00001489
+btc_start = 0.00001489              # set at the start of the session
 rp_start = 4570
 bonus_start = 33.52
+rolls_start = 237
 
-btc_last = 0.00001500
+btc_last = 0.00001500               # set at the start of the session and at the end every round
 rp_last = 4577
 bonus_last = 30.23
 
 soup = BeautifulSoup(text, 'html.parser')
+
+rolls_total = 249                   # load from file
+
+# do every round
+
+update_time = datetime.now()
+j=json.loads(requests.get('https://api.coindesk.com/v1/bpi/currentprice/BRL.json').text)
+brl_rate = j['bpi']['BRL']['rate_float']
+usd_rate = j['bpi']['USD']['rate_float']
+brl_rate_last = brl_rate*0.995
+usd_rate_last = usd_rate*0.995
 
 btc_balance_str = soup.select_one('#balance_small').text
 btc_balance = float(btc_balance_str)
@@ -147,22 +161,28 @@ bonus_percentage = float(soup.select_one('#fp_bonus_req_completed').text)
 btc_session_change = btc_balance - btc_start
 rp_session_change = rp_balance - rp_start
 bonus_session_change = bonus_percentage - bonus_start
+rolls_session_change = rolls_total - rolls_start
 
 btc_last_change = btc_balance - btc_last
 rp_last_change = rp_balance - rp_last
 bonus_last_change = bonus_percentage - bonus_last
 
+update_time = datetime.now()
 
 
-user_info =[['User', user_id]]
+user_info = [[' User: ' + user_id, 'Updated: ' + update_time.strftime('%H:%M %d-%m-%y')]]
+btc_info = [[ f'BTC price: R$ {colorChange(brl_rate, brl_rate_last, "{:,.2f}")} $ {colorChange(usd_rate, usd_rate_last, "{:,.2f}")}']]
 
-label = ['', 'BTC', 'RP', u'Bônus']
-balance = ['Current balance', btc_balance_str, rp_balance, '{:.2f}'.format(bonus_percentage)]
-session_change = ['Session change', coloredValue(btc_session_change, '{:+.8f}'), coloredValue(rp_session_change), coloredValue(bonus_session_change, '{:+.2f}%')]
-last_change = ['Last change', coloredValue(btc_last_change, '{:+.8f}'), coloredValue(rp_last_change), coloredValue(bonus_last_change, '{:+.2f}%')]
+label = ['BTC', 'RP', u'Bônus']
+balance = ['Current balance', btc_balance_str,
+           rp_balance, '{:.2f}'.format(bonus_percentage)]
+session_change = ['Session change', colorChange(btc_session_change, format='{:+.8f}'), colorChange(
+    rp_session_change), colorChange(bonus_session_change, format='{:+.2f}%')]
+last_change = ['Last change', colorChange(btc_last_change, format='{:+.8f}'), colorChange(
+    rp_last_change), colorChange(bonus_last_change, format='{:+.2f}%')]
 
 
-table=[
+table = [
     label,
     balance,
     session_change,
@@ -172,9 +192,23 @@ table=[
 output = 'Game roll successful at 12:12:11, -2 satoshi and 18 RP earned'
 output = ' '*50
 
-render()
-output = 'change'
-output = output+(' '*(50-len(output)))
-time.sleep(5)
-render(True)
+# render()
 
+label_row = ['', ' Current', '  Session', '    Last']
+btc_row = ['BTC', '%.8f'%btc_balance, colorChange(btc_session_change, format='{:+.8f}'), colorChange(btc_last_change, format='{:+.8f}')]
+
+rp_row = ['RP', rp_balance, colorChange(rp_session_change), colorChange(rp_last_change)]
+
+bonus_row = ['Bônus%', '%.2f%%'%bonus_percentage, colorChange(bonus_session_change, format='{:+.2f}%'), colorChange(bonus_last_change, format='{:+.2f}%')]
+
+rolls_row = ['Rolls', rolls_total, colorChange(rolls_session_change, format='{:+d}')]
+
+table = [
+    label_row,
+    btc_row,
+    rp_row,
+    bonus_row,
+    rolls_row,
+]
+
+render()
