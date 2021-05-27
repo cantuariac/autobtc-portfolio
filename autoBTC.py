@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from requests.sessions import session
 # from tabulate import tabulate
 import tabulate
+import threading
 
 tabulate.PRESERVE_WHITESPACE = True
 
@@ -41,14 +42,6 @@ class Log(NamedTuple):
     rp_gained: int
     btc_gained: int
 
-
-def colorChange(value, format='{:+}'):
-    if value > 0:
-        return stylize(format.format(value), colored.fore.GREEN)
-    elif value < 0:
-        return stylize(format.format(value), colored.fore.RED)
-    else:
-        return format.format(value)
 
 # class teste(NamedTuple):
 #     value: int
@@ -119,12 +112,13 @@ def render(clear=False):
 
 # session = requests.Session()
 # response = session.get('https://freebitco.in', headers=h2)
+# html = response.text
 
 # f = open('page', 'w')
 # f.write(response.text)
 # f.close()
 f = open('page')
-text = f.read()
+html = f.read()
 f.close()
 
 
@@ -137,7 +131,7 @@ btc_last = 0.00001500               # set at the start of the session and at the
 rp_last = 4577
 bonus_last = 30.23
 
-soup = BeautifulSoup(text, 'html.parser')
+soup = BeautifulSoup(html, 'html.parser')
 
 rolls_total = 249                   # load from file
 
@@ -212,3 +206,5 @@ table = [
 ]
 
 render()
+
+print(soup.select_one('#time_remaining').text)
