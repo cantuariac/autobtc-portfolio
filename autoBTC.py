@@ -34,6 +34,7 @@ class SavedData(NamedTuple):
 
 class User(NamedTuple):
     id: str = None
+    email: str = None
     cookie: str = None
     total_rolls: int = 0
 
@@ -62,9 +63,8 @@ def colorChange(value, base=0, format='{:+}'):
         return format.format(value)
 
 
-class autoBTC_instance():
+class autoBTC():
 
-    session = requests.Session()
     label_row = ['', ' Current', '  Session', '    Last']
 
     def __init__(self, user: User):
@@ -77,7 +77,7 @@ class autoBTC_instance():
         self.rolls = self.user.total_rolls
 
         if(not user.id):
-            self.user = User(self.user_id, user.cookie, user.total_rolls)
+            self.user = User(self.user_id, self.user_email, user.cookie, user.total_rolls)
 
         self.updateBTCprice()
         self.brl_rate_last = self.brl_rate
@@ -85,7 +85,8 @@ class autoBTC_instance():
 
     def updatePageData(self):
 
-        response = autoBTC_instance.session.get('https://freebitco.in', headers={
+        session = requests.Session()
+        response = session.get('https://freebitco.in', headers={
             "Cookie": self.user.cookie,
             "User-Agent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:88.0) Gecko/20100101 Firefox/88.0"
         })
@@ -94,6 +95,7 @@ class autoBTC_instance():
         soup = BeautifulSoup(html, 'html.parser')
 
         self.user_id = soup.select_one('span.left:nth-child(2)').text
+        self.user_email = soup.select_one('#edit_profile_form_email').attrs['value']
 
         btc_balance_str = soup.select_one('#balance_small').text
         self.btc_balance = float(btc_balance_str)
@@ -111,10 +113,11 @@ class autoBTC_instance():
         self.brl_rate = j['bpi']['BRL']['rate_float']
         self.usd_rate = j['bpi']['USD']['rate_float']
 
-    def updateScreen(self, output='', clear=True):
+    def printScreen(self, output=None, clear=True):
+        global outputList
         update_time = datetime.now()
         user_info_row = [[' User: ' + self.user.id,
-                          'Updated: ' + update_time.strftime('%H:%M:%S %d-%m-%y')]]
+                          'Updated: ' + datetime.now().strftime('%H:%M:%S %d-%m-%y')]]
         btc_info_row = [  # ['asd']]
             [f'BTC price: R$ {colorChange(self.brl_rate, self.brl_rate_last, "{:,.2f}")} $ {colorChange(self.usd_rate, self.usd_rate_last, "{:,.2f}")}']]
 
@@ -139,44 +142,77 @@ class autoBTC_instance():
         rolls_row = ['Rolls', self.rolls, colorChange(
             rolls_session, format='{:+d}')]
 
-        self.table = [
-            autoBTC_instance.label_row,
+        info = [
+            autoBTC.label_row,
             btc_row,
             rp_row,
             bonus_row,
             rolls_row,
         ]
+
+
+        if(output):
+            outputList = (
+                outputList + [[output+(WS*(50-len(output)))]])[6-height:]
+
+        s = tabulate.tabulate([
+                [NAME],
+                [tabulate.tabulate(btc_info_row, tablefmt='presto')],
+                [tabulate.tabulate(user_info_row, tablefmt='presto')],
+                [tabulate.tabulate(info, tablefmt='presto',
+                                colalign=("right",))],
+                [tabulate.tabulate(outputList,
+                                tablefmt='plain')]],
+                            tablefmt='fancy_grid')
         if(clear):
-            print('\033[14A')
+            print(f'\033[{height+8}A', end='')
+        print(s)
 
-        print(tabulate.tabulate([
-            [tabulate.tabulate(user_info_row, tablefmt='presto')],
-            [tabulate.tabulate(btc_info_row, tablefmt='presto')],
-            [tabulate.tabulate(self.table, tablefmt='presto',
-                               colalign=("right",))],
-            [output]], tablefmt='fancy_grid'))
+    @staticmethod
+    def printInitialScreen(output=None, clear=True):
+        global outputList
 
-def printUI(output='', clear=True):
+        j = json.loads(requests.get(
+            'https://api.coindesk.com/v1/bpi/currentprice/BRL.json').text)
+        brl_rate = j['bpi']['BRL']['rate_float']
+        usd_rate = j['bpi']['USD']['rate_float']
 
-    if(clear):
-        print('\033[10A')
-    print(tabulate.tabulate([
-            ['\n'*5],
-            [output+(' '*(50-len(output)))]], tablefmt='fancy_grid'))
+        if(output):
+            outputList = (
+                outputList + [[output+(WS*(50-len(output)))]])[-height:]
+
+        s = tabulate.tabulate(
+            [
+                [NAME], [WS],
+                [f'BTC price: R$ {brl_rate} $ {usd_rate}'],
+                [tabulate.tabulate(outputList,
+                                   tablefmt='plain')]
+            ], tablefmt='fancy_grid')
+        if(clear):
+            print(f'\033[{height+8}A', end='')
+        print(s)
+
 
 def saveData():
-    fd = open(config_file, 'w')
+    fd = open(DATA_FILE, 'w')
     json.dump(data._asdict(), fd)
     fd.close()
 
+
 def loadData():
     global data
-    fd = open(config_file)
+    fd = open(DATA_FILE)
     data = SavedData(**json.load(fd))
     fd.close()
 
-config_file = 'data.json'
-data = SavedData((0,0), (0,0), {})
+NAME = stylize('autoBTC', [colored.fore.GREEN, colored.style.BOLD])
+DATA_FILE = 'data.json'
+data = SavedData((0, 0), (0, 0), {})
+width = 50
+height = 10
+WS = '⠀'
+outputList = [[WS*width]]*height
+
 
 if __name__ == '__main__':
 
@@ -187,47 +223,48 @@ if __name__ == '__main__':
     subparser = parser.add_subparsers(title="commands")
 
     class action:
-        config = 1
-        run = 2
-        report = 3
+        CONFIG = 1
+        RUN = 2
+        REPORT = 3
 
     config_parser = subparser.add_parser('config',
                                          help="Set click positions for CAPTCHA checkbox and ROLL button")
     config_parser.add_argument(
-        'action', action='store_const', const=action.config)
+        'action', action='store_const', const=action.CONFIG)
 
     run_parser = subparser.add_parser('run',
                                       help="Run script with current configurations")
-    run_parser.add_argument('action', action='store_const', const=action.run)
+    run_parser.add_argument('action', action='store_const', const=action.RUN)
 
     report_parser = subparser.add_parser('report',
                                          help="Show a report from saved data")
     report_parser.add_argument(
-        'action', action='store_const', const=action.report)
+        'action', action='store_const', const=action.REPORT)
     if len(sys.argv) == 1:
         parser.print_usage(sys.stderr)
         sys.exit(1)
     args = parser.parse_args()
 
-    printUI(clear=False)
-    if(os.path.isfile(config_file)):
+    autoBTC.printInitialScreen(clear=False)
+    
+    if(os.path.isfile(DATA_FILE)):
         loadData()
-        printUI(f'\'{config_file}\' file loaded')
+        autoBTC.printInitialScreen(f'\'{DATA_FILE}\' file loaded')
 
     else:
-        printUI('Saved data file not found')
+        autoBTC.printInitialScreen('Saved data file not found')
         captcha_position = None
         roll_position = None
         load_time = 10
         logs = {}
         saveData()
-        printUI(f'\'{config_file}\' file created')
-
-
-# u = User(cookie=cookie)
-# # print(u)
-# btc = autoBTC_instance(u)
-# # print(btc.user)
-# btc.updateScreen()
-# input()
-# btc.updateScreen()
+        autoBTC.printInitialScreen(f'\'{DATA_FILE}\' file created')
+    u = User(cookie=cookie)
+    # print(u)
+    btc = autoBTC(u)
+    btc.printScreen('waiting 10 seconds')
+    # time.sleep(10)
+    # btc.updatePageData()
+    # btc.updateBTCprice()
+    # btc.printScreen('update again')
+    print(btc.user)
