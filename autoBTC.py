@@ -77,7 +77,8 @@ class autoBTC():
         self.rolls = self.user.total_rolls
 
         if(not user.id):
-            self.user = User(self.user_id, self.user_email, user.cookie, user.total_rolls)
+            self.user = User(self.user_id, self.user_email,
+                             user.cookie, user.total_rolls)
 
         self.updateBTCprice()
         self.brl_rate_last = self.brl_rate
@@ -95,7 +96,8 @@ class autoBTC():
         soup = BeautifulSoup(html, 'html.parser')
 
         self.user_id = soup.select_one('span.left:nth-child(2)').text
-        self.user_email = soup.select_one('#edit_profile_form_email').attrs['value']
+        self.user_email = soup.select_one(
+            '#edit_profile_form_email').attrs['value']
 
         btc_balance_str = soup.select_one('#balance_small').text
         self.btc_balance = float(btc_balance_str)
@@ -150,20 +152,19 @@ class autoBTC():
             rolls_row,
         ]
 
-
         if(output):
             outputList = (
-                outputList + [[output+(WS*(50-len(output)))]])[6-height:]
+                outputList + [[output]])[6-height:]#+(WS*(50-len(output)))
 
         s = tabulate.tabulate([
-                [NAME],
-                [tabulate.tabulate(btc_info_row, tablefmt='presto')],
-                [tabulate.tabulate(user_info_row, tablefmt='presto')],
-                [tabulate.tabulate(info, tablefmt='presto',
-                                colalign=("right",))],
-                [tabulate.tabulate(outputList,
-                                tablefmt='plain')]],
-                            tablefmt='fancy_grid')
+            [NAME],
+            [tabulate.tabulate(btc_info_row, tablefmt='presto')],
+            [tabulate.tabulate(user_info_row, tablefmt='presto')],
+            [tabulate.tabulate(info, tablefmt='presto',
+                               colalign=("right",))],
+            [tabulate.tabulate(outputList,
+                               tablefmt='plain')]],
+            tablefmt='fancy_grid')
         if(clear):
             print(f'\033[{height+8}A', end='')
         print(s)
@@ -179,7 +180,7 @@ class autoBTC():
 
         if(output):
             outputList = (
-                outputList + [[output+(WS*(50-len(output)))]])[-height:]
+                outputList + [[output]])[-height:]#+(WS*(50-len(output)))
 
         s = tabulate.tabulate(
             [
@@ -205,12 +206,14 @@ def loadData():
     data = SavedData(**json.load(fd))
     fd.close()
 
-NAME = stylize('autoBTC', [colored.fore.GREEN, colored.style.BOLD])
-DATA_FILE = 'data.json'
+
 data = SavedData((0, 0), (0, 0), {})
 width = 50
 height = 10
 WS = '⠀'
+NAME = WS*((width-7)//2)+stylize('autoBTC',
+                                 [colored.fore.GREEN, colored.style.BOLD])+WS*((width-7)//2)
+DATA_FILE = 'data.json'
 outputList = [[WS*width]]*height
 
 
@@ -246,7 +249,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     autoBTC.printInitialScreen(clear=False)
-    
+
     if(os.path.isfile(DATA_FILE)):
         loadData()
         autoBTC.printInitialScreen(f'\'{DATA_FILE}\' file loaded')
@@ -267,4 +270,4 @@ if __name__ == '__main__':
     # btc.updatePageData()
     # btc.updateBTCprice()
     # btc.printScreen('update again')
-    print(btc.user)
+    # print(btc.user)
