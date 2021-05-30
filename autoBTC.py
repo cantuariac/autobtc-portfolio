@@ -8,7 +8,7 @@ from typing import NamedTuple
 import os
 import sys
 import time
-# import pyautogui
+import pyautogui
 import subprocess
 import json
 import requests
@@ -66,6 +66,10 @@ def colorChange(value, base=0, format='{:+}'):
 class autoBTC():
 
     label_row = ['', ' Current', '  Session', '    Last']
+    brl_rate = None
+    usd_rate = None
+    brl_rate_last = None
+    usd_rate_last = None
 
     def __init__(self, user: User):
         self.user = user
@@ -81,8 +85,8 @@ class autoBTC():
                              user.cookie, user.total_rolls)
 
         self.updateBTCprice()
-        self.brl_rate_last = self.brl_rate
-        self.usd_rate_last = self.usd_rate
+        autoBTC.brl_rate_last = autoBTC.brl_rate
+        autoBTC.usd_rate_last = autoBTC.usd_rate
 
     def updatePageData(self):
 
@@ -112,8 +116,8 @@ class autoBTC():
     def updateBTCprice(self):
         j = json.loads(requests.get(
             'https://api.coindesk.com/v1/bpi/currentprice/BRL.json').text)
-        self.brl_rate = j['bpi']['BRL']['rate_float']
-        self.usd_rate = j['bpi']['USD']['rate_float']
+        autoBTC.brl_rate = j['bpi']['BRL']['rate_float']
+        autoBTC.usd_rate = j['bpi']['USD']['rate_float']
 
     def printScreen(self, output=None, clear=True):
         global outputList
@@ -121,7 +125,7 @@ class autoBTC():
         user_info_row = [[' User: ' + self.user.id,
                           'Updated: ' + datetime.now().strftime('%H:%M:%S %d-%m-%y')]]
         btc_info_row = [  # ['asd']]
-            [f'BTC price: R$ {colorChange(self.brl_rate, self.brl_rate_last, "{:,.2f}")} $ {colorChange(self.usd_rate, self.usd_rate_last, "{:,.2f}")}']]
+            [f'BTC price: R$ {colorChange(autoBTC.brl_rate, autoBTC.brl_rate_last, "{:,.2f}")} $ {colorChange(autoBTC.usd_rate, autoBTC.usd_rate_last, "{:,.2f}")}']]
 
         btc_session_change = self.btc_balance - self.btc_start
         rp_session_change = self.rp_balance - self.rp_start
@@ -154,7 +158,7 @@ class autoBTC():
 
         if(output):
             outputList = (
-                outputList + [[output]])[6-height:]#+(WS*(50-len(output)))
+                outputList + [[output]])[6-height:]  # +(WS*(50-len(output)))
 
         s = tabulate.tabulate([
             [NAME],
@@ -170,22 +174,26 @@ class autoBTC():
         print(s)
 
     @staticmethod
-    def printInitialScreen(output=None, clear=True):
+    def printScreenStatic(output=None, clear=True, overhide=False, fetch_rates=False):
         global outputList
 
-        j = json.loads(requests.get(
-            'https://api.coindesk.com/v1/bpi/currentprice/BRL.json').text)
-        brl_rate = j['bpi']['BRL']['rate_float']
-        usd_rate = j['bpi']['USD']['rate_float']
+        if(fetch_rates):
+            j = json.loads(requests.get(
+                'https://api.coindesk.com/v1/bpi/currentprice/BRL.json').text)
+            autoBTC.brl_rate = j['bpi']['BRL']['rate_float']
+            autoBTC.usd_rate = j['bpi']['USD']['rate_float']
 
         if(output):
-            outputList = (
-                outputList + [[output]])[-height:]#+(WS*(50-len(output)))
+            if(overhide):
+                outputList[-1] = [output]
+            else:
+                outputList = (
+                    outputList + [[output]])[-height:]  # +(WS*(50-len(output)))
 
         s = tabulate.tabulate(
             [
                 [NAME], [WS],
-                [f'BTC price: R$ {brl_rate} $ {usd_rate}'],
+                [f'BTC price: R$ {autoBTC.brl_rate} $ {autoBTC.usd_rate}'],
                 [tabulate.tabulate(outputList,
                                    tablefmt='plain')]
             ], tablefmt='fancy_grid')
@@ -207,14 +215,22 @@ def loadData():
     fd.close()
 
 
-data = SavedData((0, 0), (0, 0), {})
-width = 50
-height = 10
+data = SavedData(None, None, None)
+width = 80
+height = 15
 WS = '⠀'
 NAME = WS*((width-7)//2)+stylize('autoBTC',
                                  [colored.fore.GREEN, colored.style.BOLD])+WS*((width-7)//2)
 DATA_FILE = 'data.json'
 outputList = [[WS*width]]*height
+load_time = 10
+
+class action:
+    CONFIG = 'config'
+    RUN = 'run'
+    REPORT = 'report'
+    AUTO = 'auto'
+    MANUAL = 'manual'
 
 
 if __name__ == '__main__':
@@ -223,51 +239,90 @@ if __name__ == '__main__':
         prog='autoBTC.py',
         description="""Script to automate rolls for FreeBitco.in """)
 
-    subparser = parser.add_subparsers(title="commands")
+    command_parser = parser.add_subparsers(title="command", help='action to perform')
 
-    class action:
-        CONFIG = 1
-        RUN = 2
-        REPORT = 3
-
-    config_parser = subparser.add_parser('config',
-                                         help="Set click positions for CAPTCHA checkbox and ROLL button")
-    config_parser.add_argument(
+    config = command_parser.add_parser('config',
+                                       help="Set click positions for CAPTCHA checkbox and ROLL button")
+    config.add_argument(
         'action', action='store_const', const=action.CONFIG)
 
-    run_parser = subparser.add_parser('run',
-                                      help="Run script with current configurations")
-    run_parser.add_argument('action', action='store_const', const=action.RUN)
+    run = command_parser.add_parser('run',
+                                    help="Run script with current configurations")
+    run.add_argument('action', action='store_const', const=action.RUN)
+    mode_parcer = run.add_subparsers(title='mode')
+    mode_parcer.add_parser('auto', help='Fully automated').add_argument(
+        'mode', action='store_const', const=action.AUTO)
+    mode_parcer.add_parser('manual', help='Semi automated, user clicks capachas and buttons').add_argument(
+        'mode', action='store_const', const=action.MANUAL)
 
-    report_parser = subparser.add_parser('report',
-                                         help="Show a report from saved data")
+    report_parser = command_parser.add_parser('report',
+                                              help="Show a report from saved data")
     report_parser.add_argument(
         'action', action='store_const', const=action.REPORT)
-    if len(sys.argv) == 1:
-        parser.print_usage(sys.stderr)
-        sys.exit(1)
+    # if len(sys.argv) == 1:
+    #     parser.print_usage(sys.stderr)
+    #     sys.exit(1)
     args = parser.parse_args()
+    if(not hasattr(args, 'action')):
+        args.action = action.RUN
+    print(args)
 
-    autoBTC.printInitialScreen(clear=False)
+    autoBTC.printScreenStatic(clear=False, fetch_rates=True)
 
     if(os.path.isfile(DATA_FILE)):
         loadData()
-        autoBTC.printInitialScreen(f'\'{DATA_FILE}\' file loaded')
+        autoBTC.printScreenStatic(f'\'{DATA_FILE}\' file loaded')
 
     else:
-        autoBTC.printInitialScreen('Saved data file not found')
+        autoBTC.printScreenStatic('Saved data file not found')
         captcha_position = None
         roll_position = None
         load_time = 10
         logs = {}
         saveData()
-        autoBTC.printInitialScreen(f'\'{DATA_FILE}\' file created')
-    u = User(cookie=cookie)
+        autoBTC.printScreenStatic(f'\'{DATA_FILE}\' file created')
+    # u = User(cookie=cookie)
     # print(u)
-    btc = autoBTC(u)
-    btc.printScreen('waiting 10 seconds')
+    # btc = autoBTC(u)
+    # btc.printScreen('waiting 10 seconds')
     # time.sleep(10)
     # btc.updatePageData()
     # btc.updateBTCprice()
     # btc.printScreen('update again')
     # print(btc.user)
+    try:
+        if args.action==action.RUN:
+            if(not hasattr(args, 'mode')):
+                args.mode = action.AUTO
+            
+
+        
+        elif args.action==action.CONFIG:
+            autoBTC.printScreenStatic('Setting click positions')
+            autoBTC.printScreenStatic(WS)
+
+            for i in range(load_time*10, 0, -1):
+                current = pyautogui.position()
+                autoBTC.printScreenStatic('Mouse over CAPTCHA checkbox position and wait %.1f seconds (%d, %d)'
+                    %(i/10, current.x, current.y), overhide=True)
+                time.sleep(0.1)
+            captcha_position = pyautogui.position()
+            autoBTC.printScreenStatic('CAPTCHA position set at (%d, %d)'%captcha_position, overhide=True)
+            autoBTC.printScreenStatic(WS)
+            
+            for i in range(load_time*10, 0, -1):
+                current = pyautogui.position()
+                autoBTC.printScreenStatic('Mouse over ROLL button position and wait %.1f seconds (%d, %d)'
+                    %(i/10, current.x, current.y), overhide=True)
+                time.sleep(0.1)
+            roll_position = pyautogui.position()
+            autoBTC.printScreenStatic('ROLL position set at (%d, %d)'%roll_position, ' '*20, overhide=True)
+
+            data = SavedData(roll_position, captcha_position, data.accounts)
+            saveData()
+            autoBTC.printScreenStatic('Settings saved')
+        elif args.action==action.REPORT:
+            pass
+        
+    except KeyboardInterrupt:
+        autoBTC.printScreenStatic('\nScript ended by user!')
