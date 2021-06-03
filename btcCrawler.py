@@ -34,6 +34,12 @@ LOAD_TIME = 10
 outputList = [[WS*width]]*height
 
 
+class SavedData(NamedTuple):
+    roll_position: tuple
+    captcha_position: tuple
+    accounts: dict
+
+
 class User(NamedTuple):
     id: str = None
     email: str = None
@@ -44,9 +50,9 @@ class User(NamedTuple):
 class Log(NamedTuple):
     timestamp: str
     rp_balance: int
-    btc_balance: int
+    btc_balance: float
     rp_gained: int
-    btc_gained: int
+    btc_gained: float
     bonus: float
     bonus_loss: float
 
@@ -68,8 +74,11 @@ class btcCrawler():
     brl_rate_last = None
     usd_rate_last = None
 
-    def __init__(self, user: User = None):
+    def __init__(self, user: User = None, saved_data: SavedData = None):
         self.user = user
+        btcCrawler.data = saved_data
+        self.btc_last_change = self.bonus_last_change = 0.0
+        self.rp_last_change = 0
 
         if(self.user):
             self.updatePageData()
@@ -111,33 +120,64 @@ class btcCrawler():
         self.promotion = soup.select_one(
             '.free_play_bonus_box_span_large').text
 
+    def setUser(self, user: User):
+
+        self.user = user
+        self.updatePageData()
+        self.btc_start = self.btc_last = self.btc_balance
+        self.rp_start = self.rp_last = self.rp_balance
+        self.bonus_start = self.bonus_last = self.bonus
+        self.rolls = self.user.total_rolls
+
+        if(not user.id):
+            self.user = User(self.user_id, self.user_email,
+                             user.cookie, user.total_rolls)
+
+    def logChange(self, roll_timestamp):
+        self.btc_last_change = self.btc_balance - self.btc_last
+        self.rp_last_change = self.rp_balance - self.rp_last
+        self.bonus_last_change = self.bonus - self.bonus_last
+
+        log=False
+        if(self.btc_last_change>0):
+            self.btc_last = self.btc_balance
+            log=True
+        if(self.rp_last_change>0):
+            self.rp_last = self.rp_balance
+            log=True
+        if(self.bonus_last_change>0):
+            self.bonus_last = self.bonus
+            log=True
+        
+        if(log):
+            return Log(roll_timestamp, self.rp_balance, self.btc_balance,
+                                        self.rp_last_change, self.btc_last_change, self.bonus, self.bonus_last_change)
+        else:
+            return None
+
     def printScreen(self, output=None, clear=True, overhide=False, fetch_rates=False):
         global outputList
         update_time = datetime.now()
         btc_info_row = [  # ['asd']]
-            [f'BTC price',f'R$ {colorChange(btcCrawler.brl_rate, btcCrawler.brl_rate_last, "{:,.2f}")}', f' $ {colorChange(btcCrawler.usd_rate, btcCrawler.usd_rate_last, "{:,.2f}")}']]
+            [f'BTC price', f'R$ {colorChange(btcCrawler.brl_rate, btcCrawler.brl_rate_last, "{:,.2f}")}', f' $ {colorChange(btcCrawler.usd_rate, btcCrawler.usd_rate_last, "{:,.2f}")}']]
 
         if(self.user):
-            user_info_row = [['User ' , self.user.id,
-                              'Updated ' , datetime.now().strftime('%H:%M:%S %d-%m-%y')]]
+            user_info_row = [['User ', self.user.id,
+                              'Updated ', datetime.now().strftime('%H:%M:%S %d-%m-%y')]]
 
             btc_session_change = self.btc_balance - self.btc_start
             rp_session_change = self.rp_balance - self.rp_start
             bonus_session_change = self.bonus - self.bonus_start
             rolls_session = self.rolls - self.user.total_rolls
 
-            btc_last_change = self.btc_balance - self.btc_last
-            rp_last_change = self.rp_balance - self.rp_last
-            bonus_last_change = self.bonus - self.bonus_last
-
             btc_row = ['BTC', '%.8f' % self.btc_balance, colorChange(
-                btc_session_change, format='{:+.8f}'), colorChange(btc_last_change, format='{:+.8f}')]
+                btc_session_change, format='{:+.8f}'), colorChange(self.btc_last_change, format='{:+.8f}')]
 
             rp_row = ['RP', self.rp_balance, colorChange(
-                rp_session_change), colorChange(rp_last_change)]
+                rp_session_change), colorChange(self.rp_last_change)]
 
             bonus_row = ['Bônus%', '%.2f%%' % self.bonus, colorChange(
-                bonus_session_change, format='{:+.2f}%'), colorChange(bonus_last_change, format='{:+.2f}%')]
+                bonus_session_change, format='{:+.2f}%'), colorChange(self.bonus_last_change, format='{:+.2f}%')]
 
             rolls_row = ['Rolls', self.rolls, colorChange(
                 rolls_session, format='{:+d}')]
@@ -181,47 +221,98 @@ class btcCrawler():
             self.printScreen('Waiting for browser to open')
             while(not btcCrawler.isPageOpened()):
                 time.sleep(1)
-            time.sleep(LOAD_TIME)
         else:
             os.system('wmctrl -a FreeBitco.in')
-            time.sleep(1)
-            pyautogui.press('f5')
-            self.printScreen('Waiting for page to load')
-            time.sleep(LOAD_TIME)
 
+        time.sleep(0.5)
         self.printScreen('freebitco.in page is ready')
 
-    def setUser(self, user: User):
 
-        self.user = user
-        self.updatePageData()
-        self.btc_start = self.btc_last = self.btc_balance
-        self.rp_start = self.rp_last = self.rp_balance
-        self.bonus_start = self.bonus_last = self.bonus
-        self.rolls = self.user.total_rolls
-
-        if(not user.id):
-            self.user = User(self.user_id, self.user_email,
-                             user.cookie, user.total_rolls)
-    
     def wait(self, seconds, what_for=''):
+        if(not seconds):
+            return
         self.printScreen(WS)
-        self.printScreen(f'Waiting {seconds//60+1} minutes {what_for}', overhide=True)
-        time.sleep(seconds%60)
-        seconds -= (seconds%60)
+        self.printScreen(
+            f'Waiting {seconds//60+1} minutes {what_for}', overhide=True)
+        time.sleep(seconds % 60)
+        seconds -= (seconds % 60)
 
-        while(seconds>60):
-            self.printScreen(f'Waiting {seconds//60+1} minutes {what_for}', overhide=True)
+        while(seconds > 60):
+            self.printScreen(
+                f'Waiting {seconds//60+1} minutes {what_for}', overhide=True)
             time.sleep(60)
             seconds -= 60
-        
+
         while(seconds):
-            self.printScreen(f'Waiting {seconds//60+1} minutes {what_for}', overhide=True)
+            self.printScreen(
+                f'Waiting {seconds//60+1} minutes {what_for}', overhide=True)
             time.sleep(1)
             print('\r', end='')
             seconds -= 1
         self.printScreen(f'Ready {what_for}')
+
+    def waitOrSkip(self, seconds=LOAD_TIME, what_for: str = 'something', forever=False):
+        self.printScreen(f'Waiting {seconds} seconds for {what_for}')
+        while(seconds > 0 or forever):
+            time.sleep(1)
+            seconds -= 1
+            self.printScreen(
+                f'Waiting {seconds} seconds for {what_for}', overhide=True)
+            if(btcCrawler.checkRollTime()):
+                return True
+        return False
+
+    def rollSequence(self, mode='auto'):
+
+        self.focusOrOpenPage()
+
+        pyautogui.press('f5')
+        if(mode == 'auto'):
+            skiped = self.waitOrSkip(LOAD_TIME+5, "page to load")
+        elif(mode == 'manual'):
+            skiped = self.waitOrSkip(what_for="user to roll", forever=True)
+        else:
+            return False
+
+        if(skiped):
+            self.printScreen('Game roll done by user')
+            return True
+
+        pyautogui.press('end')
+        time.sleep(1)
+
+        self.printScreen(
+            'Attempting to click on CAPTCHA at (%d, %d)' % tuple(btcCrawler.data.captcha_position))
+        pyautogui.moveTo(btcCrawler.data.captcha_position)
+        time.sleep(random())
+        pyautogui.click()
+
+        skiped = self.waitOrSkip(LOAD_TIME*(1+random()), "captcha to solve")
+
+        if(skiped):
+            self.printScreen('Game roll done by user')
+            return True
+
+        self.printScreen('Attempting to click on roll at (%d, %d)' %
+                         tuple(btcCrawler.data.roll_position))
+        pyautogui.moveTo(btcCrawler.data.roll_position)
+        time.sleep(random())
+        pyautogui.click()
+
+        self.printScreen('Waiting for game to roll')
+        roll_timestamp = datetime.now()
+        time.sleep(LOAD_TIME)
+
+        if(self.checkRollTime()):
+            pyautogui.keyDown('altleft')
+            pyautogui.press('tab')
+            pyautogui.keyUp('altleft')
+            return True
+        else:
+            return False
     
+            
+
     @staticmethod
     def updateBTCprice():
         j = json.loads(requests.get(
