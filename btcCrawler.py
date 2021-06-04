@@ -34,25 +34,28 @@ LOAD_TIME = 10
 outputList = [[WS*width]]*height
 
 
-class SavedData(NamedTuple):
-    roll_position: tuple
-    captcha_position: tuple
-    accounts: dict
-
-
 class User(NamedTuple):
     id: str = None
     email: str = None
     cookie: str = None
     total_rolls: int = 0
 
+    def __str__(self) -> str:
+        return f'User(id={self.id}, email={self.email}, total_rolls={self.total_rolls})'
+
+
+class SavedData(NamedTuple):
+    roll_position: tuple
+    captcha_position: tuple
+    accounts: list
+
 
 class Log(NamedTuple):
     timestamp: str
-    rp_balance: int
     btc_balance: float
-    rp_gained: int
     btc_gained: float
+    rp_balance: int
+    rp_gained: int
     bonus: float
     bonus_loss: float
 
@@ -102,6 +105,7 @@ class btcCrawler():
             "Cookie": self.user.cookie,
             "User-Agent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:88.0) Gecko/20100101 Firefox/88.0"
         })
+        self.last_update = datetime.now()
         html = response.text
 
         soup = BeautifulSoup(html, 'html.parser')
@@ -133,7 +137,7 @@ class btcCrawler():
             self.user = User(self.user_id, self.user_email,
                              user.cookie, user.total_rolls)
 
-    def logChange(self, roll_timestamp):
+    def logChange(self, roll_timestamp:datetime):
         self.btc_last_change = self.btc_balance - self.btc_last
         self.rp_last_change = self.rp_balance - self.rp_last
         self.bonus_last_change = self.bonus - self.bonus_last
@@ -150,20 +154,19 @@ class btcCrawler():
             log=True
         
         if(log):
-            return Log(roll_timestamp, self.rp_balance, self.btc_balance,
-                                        self.rp_last_change, self.btc_last_change, self.bonus, self.bonus_last_change)
+            return Log(roll_timestamp.isoformat, self.btc_balance, self.btc_last_change, self.rp_balance,
+                                        self.rp_last_change, self.bonus, self.bonus_last_change)
         else:
             return None
 
     def printScreen(self, output=None, clear=True, overhide=False, fetch_rates=False):
         global outputList
-        update_time = datetime.now()
         btc_info_row = [  # ['asd']]
             [f'BTC price', f'R$ {colorChange(btcCrawler.brl_rate, btcCrawler.brl_rate_last, "{:,.2f}")}', f' $ {colorChange(btcCrawler.usd_rate, btcCrawler.usd_rate_last, "{:,.2f}")}']]
 
         if(self.user):
-            user_info_row = [['User ', self.user.id,
-                              'Updated ', datetime.now().strftime('%H:%M:%S %d-%m-%y')]]
+            user_info_row = [['User', self.user.email,
+                              'Last updated', self.last_update.strftime('%H:%M:%S %d-%m-%y')]]
 
             btc_session_change = self.btc_balance - self.btc_start
             rp_session_change = self.rp_balance - self.rp_start
@@ -256,8 +259,12 @@ class btcCrawler():
         while(seconds > 0 or forever):
             time.sleep(1)
             seconds -= 1
-            self.printScreen(
-                f'Waiting {seconds} seconds for {what_for}', overhide=True)
+            if(forever):
+                self.printScreen(
+                    f'Waiting for {what_for}', overhide=True)
+            else:
+                self.printScreen(
+                    f'Waiting {seconds} seconds for {what_for}', overhide=True)
             if(btcCrawler.checkRollTime()):
                 return True
         return False
@@ -337,29 +344,3 @@ class btcCrawler():
         else:
             roll_time = datetime.strptime(output[4], '%Mm:%Ss')
             return roll_time.minute * 60 + roll_time.second
-
-    @staticmethod
-    def printScreenStatic(output=None, clear=True, overhide=False, fetch_rates=False):
-        global outputList
-
-        if(fetch_rates):
-            btcCrawler.updateBTCprice()
-
-        if(output):
-            if(overhide):
-                outputList[-1] = [output]
-            else:
-                outputList = (
-                    outputList + [[output]])[-height:]  # +(WS*(50-len(output)))
-
-        s = tabulate.tabulate(
-            [
-                [NAME],
-                [f'BTC price: R$ {btcCrawler.brl_rate} $ {btcCrawler.usd_rate}'],
-                [WS],
-                [tabulate.tabulate(outputList,
-                                   tablefmt='plain')]
-            ], tablefmt='fancy_grid')
-        if(clear):
-            print(f'\033[{height+8}A', end='')
-        print(s)

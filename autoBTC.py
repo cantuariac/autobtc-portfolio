@@ -26,11 +26,15 @@ cookie2 = "__cfduid=df018db9b079168ae9361f82fec5bc2bb1620266270; btc_address=1CJ
 cookie = "__cfduid=d6d66739ea723b7e7b31e65579f1c23451620345821; have_account=1; login_auth=IpisF3uQjMNRglupS5YgxboO; cookieconsent_dismissed=yes; last_play=1621782731; csrf_token=2ijwVeB3kVxL; btc_address=19bJKkqJdhwKE11UJDkRkNkkvqDrXQArx; password=d87603930f1f4c00426a29ea75923bbf0819161134ac3bb2a82f6829af566fdd"
 
 
-def saveData(data):
+def saveData(data: SavedData):
     # global data
     # data = SavedData(roll_position, captcha_position, data.accounts)
     fd = open(DATA_FILE, 'w')
-    json.dump(data._asdict(), fd)
+
+    accounts = [user._asdict() for user in data.accounts]
+    d = data._asdict()
+    d['accounts'] = accounts
+    json.dump(d, fd, indent=2)
     fd.close()
 
 
@@ -38,18 +42,40 @@ def loadData():
     global data
     fd = open(DATA_FILE)
     roll, captcha, accounts = json.load(fd).values()
-    data = SavedData(tuple(roll), tuple(captcha), accounts)
+    data = SavedData(tuple(roll), tuple(captcha), [
+                     User(**ud) for ud in accounts])
     fd.close()
 
 
-data = SavedData(None, None, None)
+def saveLogs(logs: dict):
+    fd = open(LOGS_FILE, 'w')
+    # accounts = [user._asdict() for user in data.accounts]
+    # d = data._asdict()
+    # d['accounts'] = accounts
+    json.dump(logs, fd, indent=2)
+    fd.close()
+
+
+def loadLogs():
+    global logs
+    fd = open(LOGS_FILE)
+    logs = json.load(fd)
+    for id in logs:
+        logs[id] = [Log(*log) for log in logs[id]]
+    fd.close()
+
+
+data = SavedData((), (), [])
 DATA_FILE = 'data.json'
+logs = {}
+LOGS_FILE = 'logs.json'
 
 
 class action:
     CONFIG = 'config'
     RUN = 'run'
     REPORT = 'report'
+    USERS = 'users'
     TEST = 'test'
     AUTO = 'auto'
     MANUAL = 'manual'
@@ -64,31 +90,45 @@ if __name__ == '__main__':
     command_parser = parser.add_subparsers(
         title="command", help='action to perform')
 
-    config = command_parser.add_parser('config',
-                                       help="Set click positions for CAPTCHA checkbox and ROLL button")
+    config = command_parser.add_parser(
+        'config',
+        help="Set click positions for CAPTCHA checkbox and ROLL button")
     config.add_argument(
         'action', action='store_const', const=action.CONFIG)
 
-    run = command_parser.add_parser('run',
-                                    help="Run script with current configurations")
+    run = command_parser.add_parser(
+        'run',
+        help="Run script with current configurations")
     run.add_argument('action', action='store_const', const=action.RUN)
-    mode_parcer = run.add_subparsers(title='mode')
-    mode_parcer.add_parser('auto', help='Fully automated').add_argument(
+    run.add_argument('-i', '--user-index', action='store', type=int, default=1,
+                     help='Select user by index')
+
+    mode_run = run.add_subparsers(title='mode')
+    mode_run.add_parser('auto', help='Fully automated').add_argument(
         'mode', action='store_const', const=action.AUTO)
-    mode_parcer.add_parser('manual', help='Semi automated, user clicks capachas and buttons').add_argument(
+    mode_run.add_parser('manual', help='Semi automated, user clicks capachas and buttons').add_argument(
         'mode', action='store_const', const=action.MANUAL)
 
-    report_parser = command_parser.add_parser('report',
-                                              help="Show a report from saved data")
-    report_parser.add_argument(
+    users = command_parser.add_parser(
+        'users',
+        help="List saved users")
+    users.add_argument(
+        'action', action='store_const', const=action.USERS)
+    users.add_argument('-c', '--create-user', action='store', type=str, dest='cookie',
+                       help='Create user from cookie string')
+
+    report = command_parser.add_parser('report',
+                                       help="Show a report from saved data")
+    report.add_argument(
         'action', action='store_const', const=action.REPORT)
 
-    test_parser = command_parser.add_parser('test',
-                                            help="test script")
-    test_parser.add_argument(
+    test = command_parser.add_parser('test',
+                                     help="test script")
+    test.add_argument(
         'action', action='store_const', const=action.TEST)
 
     args = parser.parse_args()
+    # print(args); exit()
     btc = btcCrawler()
 
     btc.printScreen(clear=False, fetch_rates=True)
@@ -101,34 +141,52 @@ if __name__ == '__main__':
     if(os.path.isfile(DATA_FILE)):
         loadData()
         btc.printScreen(f'Data file loaded')
-
     else:
         btc.printScreen('Saved data file not found')
-        saveData()
+        saveData(data)
         btc.printScreen(f'Data file created')
+
+    if(os.path.isfile(LOGS_FILE)):
+        loadLogs()
+        btc.printScreen(f'Logs file loaded')
+    else:
+        btc.printScreen('Logs file not found')
+        saveLogs(logs)
+        btc.printScreen(f'Logs file created')
 
     btcCrawler.data = data
 
     try:
         if args.action == action.RUN:
+            if(not btc.data.roll_position or not btc.data.captcha_position):
+                btc.printScreen(stylize('Click positions not configured', colored.fore.RED))
+                exit()
             if(not hasattr(args, 'mode')):
                 args.mode = action.AUTO
-
-            btc.setUser(User(cookie=cookie2))
-            btc.printScreen("btc rates updated", fetch_rates=True)
+            btc.printScreen(
+                f"Running roll sequence on {args.mode}", fetch_rates=True)
+            btc.setUser(data.accounts[args.user_index-1])
+            # btc.printScreen("User(id={id}, email={email}, total_rolls={total_rolls} loaded".format(**btc.user._asdict()))
+            btc.printScreen(f'{btc.user} loaded')
 
             while(True):
                 btc.wait(btcCrawler.checkRollTime(),
-                                'for next roll')
+                         'for next roll')
                 btc.updatePageData()
                 game = btc.rollSequence(args.mode)
                 if(game):
                     roll_timestamp = datetime.now()
                     btc.updatePageData()
                     btc.printScreen(stylize(
-                        'Game roll successful at ' + roll_timestamp.strftime('%H:%M:%S')), colored.fore.GREEN)
-                    btc.printScreen(btc.logChange(roll_timestamp))
-
+                        'Game roll successful at ' + roll_timestamp.strftime('%H:%M:%S'), colored.fore.GREEN))
+                    log = btc.logChange(roll_timestamp)
+                    if btc.user.id in logs:
+                        logs[btc.user.id].append(log)
+                    else:
+                        logs[btc.user.id] = [log]
+                    saveLogs(logs)
+                    btc.rolls += 1
+                    btc.printScreen('Log saved')
                     # print()
                 else:
                     btc.printScreen(
@@ -160,16 +218,33 @@ if __name__ == '__main__':
 
             saveData(SavedData(roll_position, captcha_position, data.accounts))
             btc.printScreen('Settings saved')
+        elif args.action == action.USERS:
+            if(args.cookie):
+                btc.setUser(User(cookie=args.cookie))
+                data.accounts.append(btc.user)
+                saveData(data)
+                btc.printScreen(f"{btc.user} created")
+            if data.accounts:
+                btc.printScreen("Saved user accounts:")
+                for idx, user in enumerate(data.accounts):
+                    btc.printScreen(f"{idx+1} - {user}")
+            else:
+                btc.printScreen("No user accounts saved")
+
         elif args.action == action.REPORT:
             pass
         elif args.action == action.TEST:
-            # btc.printScreen(fetch_rates=True)
-            btc.setUser(User(cookie=cookie))
-            btc.printScreen("btc rates updated", fetch_rates=True)
-            # btc.wait(200, 'for teste')
-            # btc.printScreen("btc rates updated", fetch_rates=True)
-            btc.printScreen(f'roll time: {btcCrawler.checkRollTime()}')
-            # btc.focusOrOpenPage()
+            print(logs)
+            if '1' in logs:
+                logs['1'].append(Log(datetime.now().isoformat(), 0.00005643, 0.00000045, 34, 4, 0.5, 0.05))
+            else:
+                logs['1'] = [Log(datetime.now().isoformat(), 0.00005643, 0.00000045, 34, 4, 0.5, 0.05)]
+            saveLogs(logs)
 
     except KeyboardInterrupt:
         btc.printScreen('\nScript ended by user!')
+    
+    ud = btc.user._asdict()
+    ud['total_rolls'] = btc.rolls
+    btc.data.accounts[args.user_index-1] = User(**ud)
+    saveData(data)
