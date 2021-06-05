@@ -82,6 +82,7 @@ class btcCrawler():
         btcCrawler.data = saved_data
         self.btc_last_change = self.bonus_last_change = 0.0
         self.rp_last_change = 0
+        self.last_roll_timestamp = datetime.now()
 
         if(self.user):
             self.updatePageData()
@@ -105,7 +106,7 @@ class btcCrawler():
             "Cookie": self.user.cookie,
             "User-Agent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:88.0) Gecko/20100101 Firefox/88.0"
         })
-        self.last_update = datetime.now()
+        self.last_update_timestamp = datetime.now()
         html = response.text
 
         soup = BeautifulSoup(html, 'html.parser')
@@ -137,27 +138,31 @@ class btcCrawler():
             self.user = User(self.user_id, self.user_email,
                              user.cookie, user.total_rolls)
 
-    def logChange(self, roll_timestamp:datetime):
+    def logChange(self):
         self.btc_last_change = self.btc_balance - self.btc_last
         self.rp_last_change = self.rp_balance - self.rp_last
         self.bonus_last_change = self.bonus - self.bonus_last
 
-        log=False
-        if(self.btc_last_change>0):
+        log = False
+        if(self.btc_last_change > 0):
             self.btc_last = self.btc_balance
-            log=True
-        if(self.rp_last_change>0):
+            log = True
+        if(self.rp_last_change > 0):
             self.rp_last = self.rp_balance
-            log=True
-        if(self.bonus_last_change>0):
+            log = True
+        if(self.bonus_last_change > 0):
             self.bonus_last = self.bonus
-            log=True
-        
+            log = True
+
         if(log):
-            return Log(roll_timestamp.isoformat, self.btc_balance, self.btc_last_change, self.rp_balance,
-                                        self.rp_last_change, self.bonus, self.bonus_last_change)
+            return Log(self.last_roll_timestamp.isoformat(), self.btc_balance, self.btc_last_change, self.rp_balance,
+                       self.rp_last_change, self.bonus, self.bonus_last_change)
         else:
             return None
+
+    def increaseUserRoll(self):
+        self.rolls += 1
+        return(User(self.user.id, self.user.email, self.user.cookie, self.rolls))
 
     def printScreen(self, output=None, clear=True, overhide=False, fetch_rates=False):
         global outputList
@@ -166,7 +171,7 @@ class btcCrawler():
 
         if(self.user):
             user_info_row = [['User', self.user.email,
-                              'Last updated', self.last_update.strftime('%H:%M:%S %d-%m-%y')]]
+                              'Last updated', self.last_update_timestamp.strftime('%H:%M:%S %d-%m-%y')]]
 
             btc_session_change = self.btc_balance - self.btc_start
             rp_session_change = self.rp_balance - self.rp_start
@@ -230,7 +235,6 @@ class btcCrawler():
         time.sleep(0.5)
         self.printScreen('freebitco.in page is ready')
 
-
     def wait(self, seconds, what_for=''):
         if(not seconds):
             return
@@ -255,7 +259,11 @@ class btcCrawler():
         self.printScreen(f'Ready {what_for}')
 
     def waitOrSkip(self, seconds=LOAD_TIME, what_for: str = 'something', forever=False):
-        self.printScreen(f'Waiting {seconds} seconds for {what_for}')
+        seconds *= (1+random())
+        if(forever):
+            self.printScreen(f'Waiting for {what_for}')
+        else:
+            self.printScreen(f'Waiting {int(seconds)} seconds for {what_for}')
         while(seconds > 0 or forever):
             time.sleep(1)
             seconds -= 1
@@ -264,7 +272,7 @@ class btcCrawler():
                     f'Waiting for {what_for}', overhide=True)
             else:
                 self.printScreen(
-                    f'Waiting {seconds} seconds for {what_for}', overhide=True)
+                    f'Waiting {int(seconds)} seconds for {what_for}', overhide=True)
             if(btcCrawler.checkRollTime()):
                 return True
         return False
@@ -275,7 +283,7 @@ class btcCrawler():
 
         pyautogui.press('f5')
         if(mode == 'auto'):
-            skiped = self.waitOrSkip(LOAD_TIME+5, "page to load")
+            skiped = self.waitOrSkip(LOAD_TIME+10, "page to load")
         elif(mode == 'manual'):
             skiped = self.waitOrSkip(what_for="user to roll", forever=True)
         else:
@@ -294,7 +302,7 @@ class btcCrawler():
         time.sleep(random())
         pyautogui.click()
 
-        skiped = self.waitOrSkip(LOAD_TIME*(1+random()), "captcha to solve")
+        skiped = self.waitOrSkip(LOAD_TIME, "captcha to solve")
 
         if(skiped):
             self.printScreen('Game roll done by user')
@@ -306,19 +314,22 @@ class btcCrawler():
         time.sleep(random())
         pyautogui.click()
 
-        self.printScreen('Waiting for game to roll')
         roll_timestamp = datetime.now()
-        time.sleep(LOAD_TIME)
 
-        if(self.checkRollTime()):
+        # time.sleep(LOAD_TIME)
+
+        if(self.waitOrSkip(LOAD_TIME*(1+random()), 'game to roll')):
+            self.last_roll_timestamp = roll_timestamp
+            self.printScreen(stylize(
+                'Game roll successful at ' + roll_timestamp.strftime('%H:%M:%S'), colored.fore.GREEN))
             pyautogui.keyDown('altleft')
             pyautogui.press('tab')
             pyautogui.keyUp('altleft')
             return True
         else:
+            self.printScreen(stylize(
+                'Game roll failed', colored.fore.RED))
             return False
-    
-            
 
     @staticmethod
     def updateBTCprice():

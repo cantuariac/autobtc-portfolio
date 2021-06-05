@@ -25,6 +25,11 @@ cookie2 = "__cfduid=df018db9b079168ae9361f82fec5bc2bb1620266270; btc_address=1CJ
 
 cookie = "__cfduid=d6d66739ea723b7e7b31e65579f1c23451620345821; have_account=1; login_auth=IpisF3uQjMNRglupS5YgxboO; cookieconsent_dismissed=yes; last_play=1621782731; csrf_token=2ijwVeB3kVxL; btc_address=19bJKkqJdhwKE11UJDkRkNkkvqDrXQArx; password=d87603930f1f4c00426a29ea75923bbf0819161134ac3bb2a82f6829af566fdd"
 
+class CustomEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Log):
+            return
+        return super().default(obj)
 
 def saveData(data: SavedData):
     # global data
@@ -52,7 +57,7 @@ def saveLogs(logs: dict):
     # accounts = [user._asdict() for user in data.accounts]
     # d = data._asdict()
     # d['accounts'] = accounts
-    json.dump(logs, fd, indent=2)
+    json.dump(logs, fd)
     fd.close()
 
 
@@ -159,38 +164,47 @@ if __name__ == '__main__':
     try:
         if args.action == action.RUN:
             if(not btc.data.roll_position or not btc.data.captcha_position):
-                btc.printScreen(stylize('Click positions not configured', colored.fore.RED))
+                btc.printScreen(
+                    stylize('Click positions not configured', colored.fore.RED))
                 exit()
             if(not hasattr(args, 'mode')):
                 args.mode = action.AUTO
-            btc.printScreen(
-                f"Running roll sequence on {args.mode}", fetch_rates=True)
             btc.setUser(data.accounts[args.user_index-1])
+            btc.printScreen(
+                f"Running roll sequence on {args.mode} for user {btc.user.email}", fetch_rates=True)
             # btc.printScreen("User(id={id}, email={email}, total_rolls={total_rolls} loaded".format(**btc.user._asdict()))
-            btc.printScreen(f'{btc.user} loaded')
+            # btc.printScreen(f'{btc.user} loaded')
 
             while(True):
+                btc.updatePageData()
                 btc.wait(btcCrawler.checkRollTime(),
                          'for next roll')
+                
                 btc.updatePageData()
-                game = btc.rollSequence(args.mode)
-                if(game):
-                    roll_timestamp = datetime.now()
-                    btc.updatePageData()
-                    btc.printScreen(stylize(
-                        'Game roll successful at ' + roll_timestamp.strftime('%H:%M:%S'), colored.fore.GREEN))
-                    log = btc.logChange(roll_timestamp)
+                log = btc.logChange()
+                if (log):
                     if btc.user.id in logs:
                         logs[btc.user.id].append(log)
                     else:
                         logs[btc.user.id] = [log]
                     saveLogs(logs)
-                    btc.rolls += 1
-                    btc.printScreen('Log saved')
+                    btc.printScreen('Unknown change logged')
+                
+                game = btc.rollSequence(args.mode)
+                if(game):
+                    data.accounts[args.user_index-1] = btc.increaseUserRoll()
+                    btc.updatePageData()
+                    log = btc.logChange()
+                    # if (log):
+                    if btc.user.id in logs:
+                        logs[btc.user.id].append(log)
+                    else:
+                        logs[btc.user.id] = [log]
+                    saveData(data)
+                    saveLogs(logs)
+                    btc.printScreen('Roll logged')
                     # print()
                 else:
-                    btc.printScreen(
-                        stylize('Game roll failed', colored.fore.RED))
                     btc.printScreen('Reloading page and trying again')
 
         elif args.action == action.CONFIG:
@@ -218,6 +232,7 @@ if __name__ == '__main__':
 
             saveData(SavedData(roll_position, captcha_position, data.accounts))
             btc.printScreen('Settings saved')
+        
         elif args.action == action.USERS:
             if(args.cookie):
                 btc.setUser(User(cookie=args.cookie))
@@ -234,17 +249,13 @@ if __name__ == '__main__':
         elif args.action == action.REPORT:
             pass
         elif args.action == action.TEST:
-            print(logs)
-            if '1' in logs:
-                logs['1'].append(Log(datetime.now().isoformat(), 0.00005643, 0.00000045, 34, 4, 0.5, 0.05))
-            else:
-                logs['1'] = [Log(datetime.now().isoformat(), 0.00005643, 0.00000045, 34, 4, 0.5, 0.05)]
+            logs['2'] = [Log(datetime.now().isoformat(),
+                             0.00005643, random(), 34, 4, 0.5, 0.05)]
+            time.sleep(random())
+            logs['2'].append(Log(datetime.now().isoformat(),
+                                 0.00005643, random(), 34, 4, 0.5, 0.05))
             saveLogs(logs)
 
     except KeyboardInterrupt:
         btc.printScreen('\nScript ended by user!')
-    
-    ud = btc.user._asdict()
-    ud['total_rolls'] = btc.rolls
-    btc.data.accounts[args.user_index-1] = User(**ud)
-    saveData(data)
+
