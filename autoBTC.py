@@ -57,7 +57,12 @@ def saveLogs(logs: dict):
     # accounts = [user._asdict() for user in data.accounts]
     # d = data._asdict()
     # d['accounts'] = accounts
-    json.dump(logs, fd)
+    # json.dump(logs, fd, indent=2)
+    s = json.dumps(logs, indent=2)
+    s = s.replace('\n      ', ' ')
+    s = s.replace('\n    ],', ' ],')
+    s = s.replace('\n    ]', ' ]')
+    fd.write(s)
     fd.close()
 
 
@@ -136,7 +141,7 @@ if __name__ == '__main__':
     # print(args); exit()
     btc = btcCrawler()
 
-    btc.printScreen(clear=False, fetch_rates=True)
+    btc.printScreen(clear=False)
 
     if(not hasattr(args, 'action')):
         btc.printScreen("Starting with default command 'run'")
@@ -171,16 +176,16 @@ if __name__ == '__main__':
                 args.mode = action.AUTO
             btc.setUser(data.accounts[args.user_index-1])
             btc.printScreen(
-                f"Running roll sequence on {args.mode} for user {btc.user.email}", fetch_rates=True)
+                f"Running roll sequence on {args.mode} for user {btc.user.email}")
             # btc.printScreen("User(id={id}, email={email}, total_rolls={total_rolls} loaded".format(**btc.user._asdict()))
             # btc.printScreen(f'{btc.user} loaded')
 
             while(True):
-                btc.updatePageData()
+                btc.updatePageData(fetch_rates=True)
                 btc.wait(btcCrawler.checkRollTime(),
                          'for next roll')
                 
-                btc.updatePageData()
+                btc.updatePageData(fetch_rates=True)
                 log = btc.logChange()
                 if (log):
                     if btc.user.id in logs:
@@ -190,19 +195,19 @@ if __name__ == '__main__':
                     saveLogs(logs)
                     btc.printScreen('Unknown change logged')
                 
-                game = btc.rollSequence(args.mode)
+                game, log = btc.rollSequence(args.mode)
                 if(game):
-                    data.accounts[args.user_index-1] = btc.increaseUserRoll()
-                    btc.updatePageData()
-                    log = btc.logChange()
-                    # if (log):
-                    if btc.user.id in logs:
-                        logs[btc.user.id].append(log)
+                    if (log):
+                        data.accounts[args.user_index-1] = btc.increaseUserRoll()
+                        if btc.user.id in logs:
+                            logs[btc.user.id].append(log)
+                        else:
+                            logs[btc.user.id] = [log]
+                        saveData(data)
+                        saveLogs(logs)
+                        btc.printScreen('Roll logged')
                     else:
-                        logs[btc.user.id] = [log]
-                    saveData(data)
-                    saveLogs(logs)
-                    btc.printScreen('Roll logged')
+                        btc.printScreen('Game not ready')
                     # print()
                 else:
                     btc.printScreen('Reloading page and trying again')
@@ -249,11 +254,17 @@ if __name__ == '__main__':
         elif args.action == action.REPORT:
             pass
         elif args.action == action.TEST:
-            logs['2'] = [Log(datetime.now().isoformat(),
-                             0.00005643, random(), 34, 4, 0.5, 0.05)]
-            time.sleep(random())
-            logs['2'].append(Log(datetime.now().isoformat(),
-                                 0.00005643, random(), 34, 4, 0.5, 0.05))
+            btc.printScreen('Running test sequence')
+            # logs['2'] = [Log(datetime.now().isoformat(),
+            #                  0.00005643, random(), 34, 4, 0.5, 0.05)]
+            # time.sleep(random())
+            # logs['2'].append(Log(datetime.now().isoformat(),
+            #                      0.00005643, random(), 34, 4, 0.5, 0.05))
+            # s = json.dumps(logs, indent=2)
+            # s = s.replace('\n      ', ' ')
+            # s = s.replace('\n    ],', ' ],')
+            # s = s.replace('\n    ]', ' ]')
+            # print(s)
             saveLogs(logs)
 
     except KeyboardInterrupt:
