@@ -168,6 +168,7 @@ if __name__ == '__main__':
 
     try:
         if args.action == action.RUN:
+            errors = 0
             if(not btc.data.roll_position or not btc.data.captcha_position):
                 btc.printScreen(
                     stylize('Click positions not configured', colored.fore.RED))
@@ -206,11 +207,18 @@ if __name__ == '__main__':
                         saveData(data)
                         saveLogs(logs)
                         btc.printScreen('Roll logged')
+                        errors = 0
                     else:
                         btc.printScreen('Game not ready')
                     # print()
                 else:
+                    errors += 1
                     btc.printScreen('Reloading page and trying again')
+                
+                if(errors > 10):
+                    btc.printScreen(stylize(
+                        'Ending script, failed too many times', colored.fore.RED))
+                    break
 
         elif args.action == action.CONFIG:
             btc.printScreen('Setting click positions')
@@ -252,7 +260,9 @@ if __name__ == '__main__':
                 btc.printScreen("No user accounts saved")
 
         elif args.action == action.REPORT:
-            pass
+            for u in logs:
+                for log in logs[u]:
+                    print(log)
         elif args.action == action.TEST:
             btc.printScreen('Running test sequence')
             # logs['2'] = [Log(datetime.now().isoformat(),

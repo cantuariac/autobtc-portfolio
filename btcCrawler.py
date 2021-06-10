@@ -59,6 +59,9 @@ class Log(NamedTuple):
     bonus: float
     bonus_loss: float
 
+    def __str__(self) -> str:
+        return 'Log({0}, {1:.8f}, {2:.8f}, {3}, {4}, {5:.2f}, {6:.2f})'.format(*self)
+
 
 def colorChange(value, base=0, format='{:+}'):
     if value > base:
@@ -229,6 +232,7 @@ class btcCrawler():
     def focusOrOpenPage(self):
 
         if(not btcCrawler.isPageOpened()):
+            return False
             os.system('firefox --new-window https://freebitco.in &')
             self.printScreen('Waiting for browser to open')
             while(not btcCrawler.isPageOpened()):
@@ -238,6 +242,7 @@ class btcCrawler():
 
         time.sleep(0.5)
         self.printScreen('freebitco.in page is ready')
+        return True
 
     def wait(self, seconds, what_for=''):
         if(not seconds):
@@ -283,7 +288,10 @@ class btcCrawler():
 
     def rollSequence(self, mode='auto'):
 
-        self.focusOrOpenPage()
+        if(not self.focusOrOpenPage()):
+            self.printScreen(stylize(
+                'Page not opened', colored.fore.RED))
+            return False, None
 
         pyautogui.press('f5')
         if(mode == 'auto'):
