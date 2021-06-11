@@ -32,11 +32,13 @@ class CustomEncoder(json.JSONEncoder):
             return
         return super().default(obj)
 
+class ExitException(Exception):
+    pass
 
 def saveData():
     global settings, accounts
-    accounts = [acc._asdict() for acc in accounts]
-    settings = {res:settings[res]._asdict() for res in settings}
+    # accounts = [acc._asdict() for acc in accounts]
+    # settings = {res:(settings[res]._asdict()) for res in settings}
 
     fd = open(DATA_FILE, 'w')
     json.dump({
@@ -49,8 +51,10 @@ def loadData():
     global settings, accounts
     fd = open(DATA_FILE)
     settings, accounts = json.load(fd).values()
-    accounts = [Account(**acc) for acc in accounts]
-    settings = {res:Setting(tuple(settings[res]['roll_position']), tuple(settings[res]['captcha_position'])) for res in settings}
+    accounts = [Account(*acc) for acc in accounts]
+    settings = {
+        res:Setting(tuple(settings[res]['roll_position']), tuple(settings[res]['captcha_position']))
+         for res in settings }
     fd.close()
 
 def saveLogs():
@@ -170,20 +174,20 @@ if __name__ == '__main__':
             if(not settings):
                 btc.printScreen(
                     stylize('Click positions not configured', colored.fore.RED))
-                raise Exception
+                raise ExitException
             
             if(not resolution in settings):
                 btc.printScreen(
                     stylize('Click positions not configured for resolution '+resolution, colored.fore.RED))
-                raise Exception
+                raise ExitException
             
             if(not accounts):
                 btc.printScreen(
                     stylize('No accounts saved', colored.fore.RED))
-                raise Exception
+                raise ExitException
             
             btc.setting = settings[resolution]
-            print(accounts[args.user_index-1])
+            # print(accounts[args.user_index-1])
             btc.setAccount(accounts[args.user_index-1])
 
             if(not hasattr(args, 'mode')):
@@ -232,7 +236,7 @@ if __name__ == '__main__':
                 if(errors > 10):
                     btc.printScreen(stylize(
                         'Ending script, failed too many times', colored.fore.RED))
-                    raise Exception
+                    raise ExitException
 
         elif args.action == action.CONFIG:
             if(args.list):
@@ -242,7 +246,7 @@ if __name__ == '__main__':
                         btc.printScreen(f"({res}) - {sett}")
                 else:
                     btc.printScreen("No settings saved")
-                raise Exception
+                raise ExitException
             
             btc.printScreen(f'Setting click positions for {resolution} resolution')
             btc.printScreen(WS)
@@ -289,7 +293,8 @@ if __name__ == '__main__':
                     print(log)
         elif args.action == action.TEST:
             btc.printScreen('Running test sequence')
-            print(accounts[1].cookie)
+            print(accounts[1])
+            print(type(accounts[1]))
             # logs['2'] = [Log(datetime.now().isoformat(),
             #                  0.00005643, random(), 34, 4, 0.5, 0.05)]
             # time.sleep(random())
@@ -300,8 +305,8 @@ if __name__ == '__main__':
             # s = s.replace('\n    ],', ' ],')
             # s = s.replace('\n    ]', ' ]')
             # print(s)
-            saveLogs()
-    except Exception as e:
+            # saveLogs()
+    except ExitException as e:
         btc.printScreen(f'Script ended {e}')
     except KeyboardInterrupt:
         btc.printScreen('Script ended by user!')
