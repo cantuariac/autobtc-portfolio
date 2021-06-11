@@ -25,46 +25,43 @@ cookie2 = "__cfduid=df018db9b079168ae9361f82fec5bc2bb1620266270; btc_address=1CJ
 
 cookie = "__cfduid=d6d66739ea723b7e7b31e65579f1c23451620345821; have_account=1; login_auth=IpisF3uQjMNRglupS5YgxboO; cookieconsent_dismissed=yes; last_play=1621782731; csrf_token=2ijwVeB3kVxL; btc_address=19bJKkqJdhwKE11UJDkRkNkkvqDrXQArx; password=d87603930f1f4c00426a29ea75923bbf0819161134ac3bb2a82f6829af566fdd"
 
+
 class CustomEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, Log):
             return
         return super().default(obj)
 
-def saveData(data: SavedData):
-    # global data
-    # data = SavedData(roll_position, captcha_position, data.accounts)
+
+def saveData():
+    global settings, accounts
+    accounts = [acc._asdict() for acc in accounts]
+    settings = {res:settings[res]._asdict() for res in settings}
+
     fd = open(DATA_FILE, 'w')
-
-    accounts = [user._asdict() for user in data.accounts]
-    d = data._asdict()
-    d['accounts'] = accounts
-    json.dump(d, fd, indent=2)
+    json.dump({
+        'settings': settings,
+        'accounts': accounts,
+    }, fd, indent=2)
     fd.close()
-
 
 def loadData():
-    global data
+    global settings, accounts
     fd = open(DATA_FILE)
-    roll, captcha, accounts = json.load(fd).values()
-    data = SavedData(tuple(roll), tuple(captcha), [
-                     User(**ud) for ud in accounts])
+    settings, accounts = json.load(fd).values()
+    accounts = [Account(**acc) for acc in accounts]
+    settings = {res:Setting(tuple(settings[res]['roll_position']), tuple(settings[res]['captcha_position'])) for res in settings}
     fd.close()
 
-
-def saveLogs(logs: dict):
-    fd = open(LOGS_FILE, 'w')
-    # accounts = [user._asdict() for user in data.accounts]
-    # d = data._asdict()
-    # d['accounts'] = accounts
-    # json.dump(logs, fd, indent=2)
+def saveLogs():
+    global logs
     s = json.dumps(logs, indent=2)
     s = s.replace('\n      ', ' ')
     s = s.replace('\n    ],', ' ],')
     s = s.replace('\n    ]', ' ]')
+    fd = open(LOGS_FILE, 'w')
     fd.write(s)
     fd.close()
-
 
 def loadLogs():
     global logs
@@ -75,7 +72,8 @@ def loadLogs():
     fd.close()
 
 
-data = SavedData((), (), [])
+accounts = {}
+settings = {}
 DATA_FILE = 'data.json'
 logs = {}
 LOGS_FILE = 'logs.json'
@@ -105,6 +103,8 @@ if __name__ == '__main__':
         help="Set click positions for CAPTCHA checkbox and ROLL button")
     config.add_argument(
         'action', action='store_const', const=action.CONFIG)
+    config.add_argument('-l', '--list', action='store_true',
+                     help='List saved settings')
 
     run = command_parser.add_parser(
         'run',
@@ -140,12 +140,10 @@ if __name__ == '__main__':
     args = parser.parse_args()
     # print(args); exit()
     btc = btcCrawler()
+    resolution = subprocess.getoutput('xrandr | grep current').split(',')[1][9:]
 
     btc.printScreen(clear=False)
 
-    if(not hasattr(args, 'action')):
-        btc.printScreen("Starting with default command 'run'")
-        args.action = action.RUN
     # print(args)
 
     if(os.path.isfile(DATA_FILE)):
@@ -153,7 +151,7 @@ if __name__ == '__main__':
         btc.printScreen(f'Data file loaded')
     else:
         btc.printScreen('Saved data file not found')
-        saveData(data)
+        saveData()
         btc.printScreen(f'Data file created')
 
     if(os.path.isfile(LOGS_FILE)):
@@ -161,51 +159,67 @@ if __name__ == '__main__':
         btc.printScreen(f'Logs file loaded')
     else:
         btc.printScreen('Logs file not found')
-        saveLogs(logs)
+        saveLogs()
         btc.printScreen(f'Logs file created')
 
-    btcCrawler.data = data
-
+    if(not hasattr(args, 'action')):
+        btc.printScreen("Starting with default command 'run'")
+        args.action = action.RUN
     try:
         if args.action == action.RUN:
-            errors = 0
-            if(not btc.data.roll_position or not btc.data.captcha_position):
+            if(not settings):
                 btc.printScreen(
                     stylize('Click positions not configured', colored.fore.RED))
-                exit()
+                raise Exception
+            
+            if(not resolution in settings):
+                btc.printScreen(
+                    stylize('Click positions not configured for resolution '+resolution, colored.fore.RED))
+                raise Exception
+            
+            if(not accounts):
+                btc.printScreen(
+                    stylize('No accounts saved', colored.fore.RED))
+                raise Exception
+            
+            btc.setting = settings[resolution]
+            print(accounts[args.user_index-1])
+            btc.setAccount(accounts[args.user_index-1])
+
             if(not hasattr(args, 'mode')):
                 args.mode = action.AUTO
-            btc.setUser(data.accounts[args.user_index-1])
+            
             btc.printScreen(
-                f"Running roll sequence on {args.mode} for user {btc.user.email}")
+                f"Running on {args.mode} mode, {resolution} resolution for user {btc.account.email}")
             # btc.printScreen("User(id={id}, email={email}, total_rolls={total_rolls} loaded".format(**btc.user._asdict()))
             # btc.printScreen(f'{btc.user} loaded')
 
+            errors = 0
             while(True):
                 btc.updatePageData(fetch_rates=True)
                 btc.wait(btcCrawler.checkRollTime(),
                          'for next roll')
-                
+
                 btc.updatePageData(fetch_rates=True)
                 log = btc.logChange()
                 if (log):
-                    if btc.user.id in logs:
-                        logs[btc.user.id].append(log)
+                    if btc.account.id in logs:
+                        logs[btc.account.id].append(log)
                     else:
-                        logs[btc.user.id] = [log]
-                    saveLogs(logs)
+                        logs[btc.account.id] = [log]
+                    saveLogs()
                     btc.printScreen('Unknown change logged')
-                
+
                 game, log = btc.rollSequence(args.mode)
                 if(game):
                     if (log):
-                        data.accounts[args.user_index-1] = btc.increaseUserRoll()
-                        if btc.user.id in logs:
-                            logs[btc.user.id].append(log)
+                        accounts[args.user_index - 1] = btc.increaseAccountRoll()
+                        if btc.account.id in logs:
+                            logs[btc.account.id].append(log)
                         else:
-                            logs[btc.user.id] = [log]
-                        saveData(data)
-                        saveLogs(logs)
+                            logs[btc.account.id] = [log]
+                        saveData()
+                        saveLogs()
                         btc.printScreen('Roll logged')
                         errors = 0
                     else:
@@ -214,14 +228,23 @@ if __name__ == '__main__':
                 else:
                     errors += 1
                     btc.printScreen('Reloading page and trying again')
-                
+
                 if(errors > 10):
                     btc.printScreen(stylize(
                         'Ending script, failed too many times', colored.fore.RED))
-                    break
+                    raise Exception
 
         elif args.action == action.CONFIG:
-            btc.printScreen('Setting click positions')
+            if(args.list):
+                if settings:
+                    btc.printScreen("Saved user settings:")
+                    for res, sett in settings.items():
+                        btc.printScreen(f"({res}) - {sett}")
+                else:
+                    btc.printScreen("No settings saved")
+                raise Exception
+            
+            btc.printScreen(f'Setting click positions for {resolution} resolution')
             btc.printScreen(WS)
 
             for i in range(LOAD_TIME*10, 0, -1):
@@ -242,19 +265,20 @@ if __name__ == '__main__':
             roll_position = pyautogui.position()
             btc.printScreen('ROLL position set at (%d, %d)' %
                             roll_position, ' '*20, overhide=True)
-
-            saveData(SavedData(roll_position, captcha_position, data.accounts))
+            
+            settings[resolution] = Setting(roll_position, captcha_position)
+            saveData()
             btc.printScreen('Settings saved')
-        
+
         elif args.action == action.USERS:
             if(args.cookie):
-                btc.setUser(User(cookie=args.cookie))
-                data.accounts.append(btc.user)
-                saveData(data)
-                btc.printScreen(f"{btc.user} created")
-            if data.accounts:
+                btc.setAccount(Account(cookie=args.cookie))
+                accounts.append(btc.account)
+                saveData()
+                btc.printScreen(f"{btc.account} created")
+            if accounts:
                 btc.printScreen("Saved user accounts:")
-                for idx, user in enumerate(data.accounts):
+                for idx, user in enumerate(accounts):
                     btc.printScreen(f"{idx+1} - {user}")
             else:
                 btc.printScreen("No user accounts saved")
@@ -265,6 +289,7 @@ if __name__ == '__main__':
                     print(log)
         elif args.action == action.TEST:
             btc.printScreen('Running test sequence')
+            print(accounts[1].cookie)
             # logs['2'] = [Log(datetime.now().isoformat(),
             #                  0.00005643, random(), 34, 4, 0.5, 0.05)]
             # time.sleep(random())
@@ -275,8 +300,8 @@ if __name__ == '__main__':
             # s = s.replace('\n    ],', ' ],')
             # s = s.replace('\n    ]', ' ]')
             # print(s)
-            saveLogs(logs)
-
+            saveLogs()
+    except Exception as e:
+        btc.printScreen(f'Script ended {e}')
     except KeyboardInterrupt:
-        btc.printScreen('\nScript ended by user!')
-
+        btc.printScreen('Script ended by user!')

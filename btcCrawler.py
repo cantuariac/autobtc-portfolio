@@ -1,12 +1,9 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
 
-from enum import Flag
-from bs4 import BeautifulSoup, UnicodeDammit
-import argparse
+from bs4 import BeautifulSoup
 from typing import NamedTuple
 import os
-import sys
 import time
 import pyautogui
 import subprocess
@@ -16,12 +13,7 @@ from datetime import datetime
 from random import random
 from colored import stylize
 import colored
-from collections import namedtuple
-from dataclasses import dataclass
-from requests.sessions import session
-# from tabulate import tabulate
 import tabulate
-import threading
 
 tabulate.PRESERVE_WHITESPACE = True
 
@@ -31,23 +23,24 @@ WS = '⠀'
 NAME = WS*((width-7)//2)+stylize('autoBTC',
                                  [colored.fore.GREEN, colored.style.BOLD])+WS*((width-7)//2)
 LOAD_TIME = 10
-outputList = [[WS*width]]*height
+outputList = [[WS]]*height
 
 
-class User(NamedTuple):
+class Account(NamedTuple):
     id: str = None
     email: str = None
     cookie: str = None
     total_rolls: int = 0
 
     def __str__(self) -> str:
-        return f'User(id={self.id}, email={self.email}, total_rolls={self.total_rolls})'
+        return f'Account(id={self.id}, email={self.email}, total_rolls={self.total_rolls})'
 
 
-class SavedData(NamedTuple):
+class Setting(NamedTuple):
     roll_position: tuple
     captcha_position: tuple
-    accounts: list
+    def __str__(self) -> str:
+        return f'(roll_position={self.roll_position}, captcha_position={self.captcha_position})'
 
 
 class Log(NamedTuple):
@@ -80,23 +73,23 @@ class btcCrawler():
     brl_rate_last = None
     usd_rate_last = None
 
-    def __init__(self, user: User = None, saved_data: SavedData = None):
-        self.user = user
-        btcCrawler.data = saved_data
+    def __init__(self, acc : Account = None, setting : Setting = None):
+        self.account = acc
+        self.setting = setting
         self.btc_last_change = self.bonus_last_change = 0.0
         self.rp_last_change = 0
         self.last_roll_timestamp = datetime.now()
 
-        if(self.user):
+        if(self.account):
             self.updatePageData()
             self.btc_start = self.btc_last = self.btc_balance
             self.rp_start = self.rp_last = self.rp_balance
             self.bonus_start = self.bonus_last = self.bonus
-            self.rolls = self.user.total_rolls
+            self.rolls = self.account.total_rolls
 
-            if(not user.id):
-                self.user = User(self.user_id, self.user_email,
-                                 user.cookie, user.total_rolls)
+            if(not acc.id):
+                self.account = Account(self.account_id, self.account_email,
+                                 acc.cookie, acc.total_rolls)
 
         btcCrawler.updateBTCprice()
         btcCrawler.brl_rate_last = btcCrawler.brl_rate
@@ -106,7 +99,7 @@ class btcCrawler():
 
         session = requests.Session()
         response = session.get('https://freebitco.in', headers={
-            "Cookie": self.user.cookie,
+            "Cookie": self.account.cookie,
             "User-Agent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:88.0) Gecko/20100101 Firefox/88.0"
         })
         self.last_update_timestamp = datetime.now()
@@ -114,8 +107,8 @@ class btcCrawler():
 
         soup = BeautifulSoup(html, 'html.parser')
 
-        self.user_id = soup.select_one('span.left:nth-child(2)').text
-        self.user_email = soup.select_one(
+        self.account_id = soup.select_one('span.left:nth-child(2)').text
+        self.account_email = soup.select_one(
             '#edit_profile_form_email').attrs['value']
 
         btc_balance_str = soup.select_one('#balance_small').text
@@ -131,18 +124,18 @@ class btcCrawler():
         if(fetch_rates):
             btcCrawler.updateBTCprice()
 
-    def setUser(self, user: User):
+    def setAccount(self, account: Account):
 
-        self.user = user
+        self.account = account
         self.updatePageData()
         self.btc_start = self.btc_last = self.btc_balance
         self.rp_start = self.rp_last = self.rp_balance
         self.bonus_start = self.bonus_last = self.bonus
-        self.rolls = self.user.total_rolls
+        self.rolls = self.account.total_rolls
 
-        if(not user.id):
-            self.user = User(self.user_id, self.user_email,
-                             user.cookie, user.total_rolls)
+        if(not account.id):
+            self.account = Account(self.account_id, self.account_email,
+                             account.cookie, account.total_rolls)
 
     def logChange(self):
         self.btc_last_change = self.btc_balance - self.btc_last
@@ -166,9 +159,9 @@ class btcCrawler():
         else:
             return None
 
-    def increaseUserRoll(self):
+    def increaseAccountRoll(self):
         self.rolls += 1
-        return(User(self.user.id, self.user.email, self.user.cookie, self.rolls))
+        return(Account(self.account.id, self.account.email, self.account.cookie, self.rolls))
 
     def printScreen(self, output=None, clear=True, overhide=False):
         global outputList
@@ -176,14 +169,14 @@ class btcCrawler():
         btc_info_row = [  # ['asd']]
             [f'BTC price', f'R$ {colorChange(btcCrawler.brl_rate, btcCrawler.brl_rate_last, "{:,.2f}")}', f' $ {colorChange(btcCrawler.usd_rate, btcCrawler.usd_rate_last, "{:,.2f}")}']]
 
-        if(self.user):
-            user_info_row = [['User', self.user.email,
+        if(self.account):
+            account_info_row = [['User', self.account.email,
                               'Last updated', self.last_update_timestamp.strftime('%H:%M:%S %d-%m-%y')]]
 
             btc_session_change = self.btc_balance - self.btc_start
             rp_session_change = self.rp_balance - self.rp_start
             bonus_session_change = self.bonus - self.bonus_start
-            rolls_session = self.rolls - self.user.total_rolls
+            rolls_session = self.rolls - self.account.total_rolls
 
             btc_row = ['BTC', '%.8f' % self.btc_balance, colorChange(
                 btc_session_change, format='{:+.8f}'), colorChange(self.btc_last_change, format='{:+.8f}')]
@@ -205,7 +198,7 @@ class btcCrawler():
                 rolls_row,
             ]
         else:
-            user_info_row = [WS]
+            account_info_row = [WS]
             info_detail = [WS]*5
 
         if(output != None):
@@ -218,7 +211,7 @@ class btcCrawler():
         s = tabulate.tabulate([
             [NAME],
             [tabulate.tabulate(btc_info_row, tablefmt='presto')],
-            [tabulate.tabulate(user_info_row, tablefmt='presto')],
+            [tabulate.tabulate(account_info_row, tablefmt='presto')],
             [tabulate.tabulate(info_detail, tablefmt='presto',
                                colalign=("right",))],
             [tabulate.tabulate(outputList[6:],
@@ -297,29 +290,29 @@ class btcCrawler():
         if(mode == 'auto'):
             skiped = self.waitOrSkip(LOAD_TIME, "page to load")
         elif(mode == 'manual'):
-            skiped = self.waitOrSkip(what_for="user to roll", forever=True)
+            skiped = self.waitOrSkip(what_for="account to roll", forever=True)
         else:
             return False
 
         if(skiped):
-            self.printScreen('Click done by user')
+            self.printScreen('Click done by account')
         else:
             pyautogui.press('end')
             self.printScreen(
-                'Attempting to click on CAPTCHA at (%d, %d)' % tuple(btcCrawler.data.captcha_position))
-            pyautogui.moveTo(btcCrawler.data.captcha_position)
+                'Attempting to click on CAPTCHA at (%d, %d)' % tuple(self.setting.captcha_position))
+            pyautogui.moveTo(self.setting.captcha_position)
             time.sleep(random())
             pyautogui.click()
 
             skiped = self.waitOrSkip(LOAD_TIME, "captcha to solve")
 
             if(skiped):
-                self.printScreen('Click done by user')
+                self.printScreen('Click done by account')
             else:
                 pyautogui.press('end')
                 self.printScreen('Attempting to click on roll at (%d, %d)' %
-                                tuple(btcCrawler.data.roll_position))
-                pyautogui.moveTo(btcCrawler.data.roll_position)
+                                tuple(self.setting.roll_position))
+                pyautogui.moveTo(self.setting.roll_position)
                 time.sleep(random())
                 pyautogui.click()
 
