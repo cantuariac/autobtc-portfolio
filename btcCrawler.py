@@ -26,6 +26,15 @@ LOAD_TIME = 10
 outputList = [[WS]]*height
 
 
+class GameFailException(Exception):
+    pass
+
+class PageNotOpenException(Exception):
+    pass
+
+class GameNotReady(Exception):
+    pass
+
 class Account(NamedTuple):
     id: str = None
     email: str = None
@@ -53,7 +62,8 @@ class Log(NamedTuple):
     bonus_loss: float
 
     def __str__(self) -> str:
-        return 'Log({0}, {1:.8f}, {2:.8f}, {3}, {4}, {5:.2f}, {6:.2f})'.format(*self)
+        return 'Log({date}, {1:.8f}, {2:.8f}, {3}, {4}, {5:.2f}, {6:.2f})'.format(*self, date=datetime.fromisoformat(self.timestamp).strftime("%d-%b-%Y-%H:%m:%M"))
+        # return 'Log({0}, {1:.8f}, {2:.8f}, {3}, {4}, {5:.2f}, {6:.2f})'.format(*self)
 
 
 def colorChange(value, base=0, format='{:+}'):
@@ -154,7 +164,7 @@ class btcCrawler():
             log = True
 
         if(log):
-            return Log(self.last_roll_timestamp.isoformat(), self.btc_balance, self.btc_last_change, self.rp_balance,
+            return Log(datetime.now().isoformat(), self.btc_balance, self.btc_last_change, self.rp_balance,
                        self.rp_last_change, self.bonus, self.bonus_last_change)
         else:
             return None
@@ -170,7 +180,7 @@ class btcCrawler():
             [f'BTC price', f'R$ {colorChange(btcCrawler.brl_rate, btcCrawler.brl_rate_last, "{:,.2f}")}', f' $ {colorChange(btcCrawler.usd_rate, btcCrawler.usd_rate_last, "{:,.2f}")}']]
 
         if(self.account):
-            account_info_row = [['User', self.account.email,
+            account_info_row = [['Account', self.account.email,
                               'Last updated', self.last_update_timestamp.strftime('%H:%M:%S %d-%m-%y')]]
 
             btc_session_change = self.btc_balance - self.btc_start
@@ -202,6 +212,8 @@ class btcCrawler():
             info_detail = [WS]*5
 
         if(output != None):
+            if(len(output)>width):
+                output = output[:width]
             if(overhide):
                 outputList[-1] = [output]
             else:
@@ -282,20 +294,17 @@ class btcCrawler():
     def rollSequence(self, mode='auto'):
 
         if(not self.focusOrOpenPage()):
-            self.printScreen(stylize(
-                'Page not opened', colored.fore.RED))
-            return False, None
+            raise PageNotOpenException
 
         pyautogui.press('f5')
-        if(mode == 'auto'):
+        if(mode == 'manual'):
+            skiped = self.waitOrSkip(what_for="user to roll", forever=True)
+        else:       #mode == 'auto'
             skiped = self.waitOrSkip(LOAD_TIME, "page to load")
-        elif(mode == 'manual'):
-            skiped = self.waitOrSkip(what_for="account to roll", forever=True)
-        else:
-            return False
+        
 
         if(skiped):
-            self.printScreen('Click done by account')
+            self.printScreen('Click done by user')
         else:
             pyautogui.press('end')
             self.printScreen(
@@ -307,7 +316,7 @@ class btcCrawler():
             skiped = self.waitOrSkip(LOAD_TIME, "captcha to solve")
 
             if(skiped):
-                self.printScreen('Click done by account')
+                self.printScreen('Click done by user')
             else:
                 pyautogui.press('end')
                 self.printScreen('Attempting to click on roll at (%d, %d)' %
@@ -316,30 +325,26 @@ class btcCrawler():
                 time.sleep(random())
                 pyautogui.click()
 
-        roll_timestamp = datetime.now()
 
         # time.sleep(LOAD_TIME)
 
-        if(self.waitOrSkip(LOAD_TIME, 'game to roll')):
+        if(skiped or self.waitOrSkip(LOAD_TIME, 'game to roll')):
             self.updatePageData()
             log = self.logChange()
-            if (log):
-                self.last_roll_timestamp = roll_timestamp
-                self.printScreen(stylize(
-                    'Game roll successful at ' + roll_timestamp.strftime('%H:%M:%S'), colored.fore.GREEN))
             pyautogui.keyDown('altleft')
             pyautogui.press('tab')
             pyautogui.keyUp('altleft')
-            return True, log
+
+            if (not log):
+                raise GameNotReady
+            return log
         else:
-            self.printScreen(stylize(
-                'Game roll failed', colored.fore.RED))
-            return False, None
+            raise GameFailException
 
     @staticmethod
     def updateBTCprice():
         j = json.loads(requests.get(
-            'https://api.coindesk.com/v1/bpi/currentprice/BRL.json').text)
+            'https://api.coindesk.com/v1/bpi/currentprice/BRL.json', timeout=5).text)
         btcCrawler.brl_rate = j['bpi']['BRL']['rate_float']
         btcCrawler.usd_rate = j['bpi']['USD']['rate_float']
 

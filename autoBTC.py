@@ -32,8 +32,10 @@ class CustomEncoder(json.JSONEncoder):
             return
         return super().default(obj)
 
+
 class ExitException(Exception):
     pass
+
 
 def saveData():
     global settings, accounts
@@ -42,20 +44,24 @@ def saveData():
 
     fd = open(DATA_FILE, 'w')
     json.dump({
-        'settings': settings,
-        'accounts': accounts,
+        'settings': {res: (settings[res]._asdict()) for res in settings},
+        'accounts': [acc._asdict() for acc in accounts],
     }, fd, indent=2)
     fd.close()
+
 
 def loadData():
     global settings, accounts
     fd = open(DATA_FILE)
     settings, accounts = json.load(fd).values()
-    accounts = [Account(*acc) for acc in accounts]
+    accounts = [Account(**acc) for acc in accounts]
     settings = {
-        res:Setting(tuple(settings[res]['roll_position']), tuple(settings[res]['captcha_position']))
-         for res in settings }
+        res: Setting(tuple(settings[res]['roll_position']), tuple(
+            settings[res]['captcha_position']))
+        # res:Setting(tuple(settings[res][0]), tuple(settings[res][1]))
+        for res in settings}
     fd.close()
+
 
 def saveLogs():
     global logs
@@ -66,6 +72,7 @@ def saveLogs():
     fd = open(LOGS_FILE, 'w')
     fd.write(s)
     fd.close()
+
 
 def loadLogs():
     global logs
@@ -108,7 +115,7 @@ if __name__ == '__main__':
     config.add_argument(
         'action', action='store_const', const=action.CONFIG)
     config.add_argument('-l', '--list', action='store_true',
-                     help='List saved settings')
+                        help='List saved settings')
 
     run = command_parser.add_parser(
         'run',
@@ -144,7 +151,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
     # print(args); exit()
     btc = btcCrawler()
-    resolution = subprocess.getoutput('xrandr | grep current').split(',')[1][9:]
+    resolution = subprocess.getoutput(
+        'xrandr | grep current').split(',')[1][9:]
 
     btc.printScreen(clear=False)
 
@@ -175,65 +183,77 @@ if __name__ == '__main__':
                 btc.printScreen(
                     stylize('Click positions not configured', colored.fore.RED))
                 raise ExitException
-            
+
             if(not resolution in settings):
                 btc.printScreen(
                     stylize('Click positions not configured for resolution '+resolution, colored.fore.RED))
                 raise ExitException
-            
+
             if(not accounts):
                 btc.printScreen(
                     stylize('No accounts saved', colored.fore.RED))
                 raise ExitException
-            
+
             btc.setting = settings[resolution]
             # print(accounts[args.user_index-1])
             btc.setAccount(accounts[args.user_index-1])
 
             if(not hasattr(args, 'mode')):
                 args.mode = action.AUTO
-            
+
             btc.printScreen(
                 f"Running on {args.mode} mode, {resolution} resolution for user {btc.account.email}")
             # btc.printScreen("User(id={id}, email={email}, total_rolls={total_rolls} loaded".format(**btc.user._asdict()))
             # btc.printScreen(f'{btc.user} loaded')
 
-            errors = 0
+            consecutive_errors = 0
             while(True):
-                btc.updatePageData(fetch_rates=True)
-                btc.wait(btcCrawler.checkRollTime(),
-                         'for next roll')
+                try:
+                    btc.updatePageData(fetch_rates=True)
+                    btc.wait(btcCrawler.checkRollTime(),
+                            'for next roll')
 
-                btc.updatePageData(fetch_rates=True)
-                log = btc.logChange()
-                if (log):
-                    if btc.account.id in logs:
-                        logs[btc.account.id].append(log)
-                    else:
-                        logs[btc.account.id] = [log]
-                    saveLogs()
-                    btc.printScreen('Unknown change logged')
-
-                game, log = btc.rollSequence(args.mode)
-                if(game):
+                    btc.updatePageData(fetch_rates=True)
+                    log = btc.logChange()
                     if (log):
-                        accounts[args.user_index - 1] = btc.increaseAccountRoll()
                         if btc.account.id in logs:
                             logs[btc.account.id].append(log)
                         else:
                             logs[btc.account.id] = [log]
-                        saveData()
                         saveLogs()
-                        btc.printScreen('Roll logged')
-                        errors = 0
-                    else:
-                        btc.printScreen('Game not ready')
-                    # print()
-                else:
-                    errors += 1
+                        btc.printScreen('Unknown change logged')
+                    log = btc.rollSequence(args.mode)
+                except PageNotOpenException:
+                    btc.printScreen(stylize('Page not opened', colored.fore.RED))
+                    btc.printScreen('Waiting for user to open page')
+                    time.sleep(LOAD_TIME)
+                    consecutive_errors += 1
                     btc.printScreen('Reloading page and trying again')
+                except GameNotReady:
+                    btc.printScreen(stylize('Game not ready', colored.fore.RED))
+                    consecutive_errors += 1
+                except GameFailException:
+                    btc.printScreen(stylize('Game roll failed', colored.fore.RED))
+                    consecutive_errors += 1
+                    btc.printScreen('Reloading page and trying again')
+                except Exception as error:
+                    btc.printScreen(stylize(f'Unknown error:{error}', colored.fore.RED))
+                    print(error.with_traceback())
+                    raise ExitException
+                else:
+                    btc.printScreen(stylize('Game roll successful at ' + datetime.fromisoformat(log.timestamp).strftime('%H:%M:%S'), colored.fore.GREEN))
 
-                if(errors > 10):
+                    accounts[args.user_index - 1] = btc.increaseAccountRoll()
+                    if btc.account.id in logs:
+                        logs[btc.account.id].append(log)
+                    else:
+                        logs[btc.account.id] = [log]
+                    saveData()
+                    saveLogs()
+                    btc.printScreen('Roll logged')
+                    consecutive_errors = 0
+
+                if(consecutive_errors > 10):
                     btc.printScreen(stylize(
                         'Ending script, failed too many times', colored.fore.RED))
                     raise ExitException
@@ -247,8 +267,9 @@ if __name__ == '__main__':
                 else:
                     btc.printScreen("No settings saved")
                 raise ExitException
-            
-            btc.printScreen(f'Setting click positions for {resolution} resolution')
+
+            btc.printScreen(
+                f'Setting click positions for {resolution} resolution')
             btc.printScreen(WS)
 
             for i in range(LOAD_TIME*10, 0, -1):
@@ -268,8 +289,8 @@ if __name__ == '__main__':
                 time.sleep(0.1)
             roll_position = pyautogui.position()
             btc.printScreen('ROLL position set at (%d, %d)' %
-                            roll_position, ' '*20, overhide=True)
-            
+                            roll_position, overhide=True)
+
             settings[resolution] = Setting(roll_position, captcha_position)
             saveData()
             btc.printScreen('Settings saved')
@@ -293,8 +314,12 @@ if __name__ == '__main__':
                     print(log)
         elif args.action == action.TEST:
             btc.printScreen('Running test sequence')
-            print(accounts[1])
-            print(type(accounts[1]))
+            saveData()
+            # print(accounts)
+            # print(settings)
+            # print(json.dumps(accounts[1]._asdict(), indent=1))
+            # for res in settings:
+            # print(json.dumps(settings[res]._asdict(), indent=1))
             # logs['2'] = [Log(datetime.now().isoformat(),
             #                  0.00005643, random(), 34, 4, 0.5, 0.05)]
             # time.sleep(random())
