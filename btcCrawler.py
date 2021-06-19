@@ -17,7 +17,7 @@ import tabulate
 
 tabulate.PRESERVE_WHITESPACE = True
 
-width = 80
+width = 85
 height = 15
 WS = '⠀'
 NAME = WS*((width-7)//2)+stylize('autoBTC',
@@ -29,11 +29,14 @@ outputList = [[WS]]*height
 class GameFailException(Exception):
     pass
 
+
 class PageNotOpenException(Exception):
     pass
 
+
 class GameNotReady(Exception):
     pass
+
 
 class Account(NamedTuple):
     id: str = None
@@ -48,6 +51,7 @@ class Account(NamedTuple):
 class Setting(NamedTuple):
     roll_position: tuple
     captcha_position: tuple
+
     def __str__(self) -> str:
         return f'(roll_position={self.roll_position}, captcha_position={self.captcha_position})'
 
@@ -83,7 +87,7 @@ class btcCrawler():
     brl_rate_last = None
     usd_rate_last = None
 
-    def __init__(self, acc : Account = None, setting : Setting = None):
+    def __init__(self, acc: Account = None, setting: Setting = None):
         self.account = acc
         self.setting = setting
         self.btc_last_change = self.bonus_last_change = 0.0
@@ -99,7 +103,7 @@ class btcCrawler():
 
             if(not acc.id):
                 self.account = Account(self.account_id, self.account_email,
-                                 acc.cookie, acc.total_rolls)
+                                       acc.cookie, acc.total_rolls)
 
         btcCrawler.updateBTCprice()
         btcCrawler.brl_rate_last = btcCrawler.brl_rate
@@ -121,6 +125,16 @@ class btcCrawler():
         self.account_email = soup.select_one(
             '#edit_profile_form_email').attrs['value']
 
+        active_bonus = soup.select("span.free_play_bonus_box_span_large")
+        # print(active_bonus)
+        if len(active_bonus) == 4:
+            self.active_rp_bonus = active_bonus[0].text
+            s = soup.select_one("div#bonus_container_free_points").text
+            self.bonus_countdown = int(s[s.rfind(',')+1:s.rfind(')})')])
+        else:
+            self.bonus_countdown = 0
+            self.active_rp_bonus = None
+
         btc_balance_str = soup.select_one('#balance_small').text
         self.btc_balance = float(btc_balance_str)
         self.satoshi_balance = int(btc_balance_str.replace('.', ''))
@@ -130,7 +144,7 @@ class btcCrawler():
 
         self.promotion = soup.select_one(
             '.free_play_bonus_box_span_large').text
-        
+
         if(fetch_rates):
             btcCrawler.updateBTCprice()
 
@@ -145,7 +159,7 @@ class btcCrawler():
 
         if(not account.id):
             self.account = Account(self.account_id, self.account_email,
-                             account.cookie, account.total_rolls)
+                                   account.cookie, account.total_rolls)
 
     def logChange(self):
         self.btc_last_change = self.btc_balance - self.btc_last
@@ -181,7 +195,7 @@ class btcCrawler():
 
         if(self.account):
             account_info_row = [['Account', self.account.email,
-                              'Last updated', self.last_update_timestamp.strftime('%H:%M:%S %d-%m-%y')]]
+                                 'Last updated', self.last_update_timestamp.strftime('%H:%M:%S %d-%m-%y')]]
 
             btc_session_change = self.btc_balance - self.btc_start
             rp_session_change = self.rp_balance - self.rp_start
@@ -191,8 +205,10 @@ class btcCrawler():
             btc_row = ['BTC', '%.8f' % self.btc_balance, colorChange(
                 btc_session_change, format='{:+.8f}'), colorChange(self.btc_last_change, format='{:+.8f}')]
 
-            rp_row = ['RP', self.rp_balance, colorChange(
-                rp_session_change), colorChange(self.rp_last_change)]
+            rp_row = ['RP', self.rp_balance,
+                      colorChange(rp_session_change),
+                      colorChange(self.rp_last_change),
+                      stylize(f'{self.active_rp_bonus} for {self.bonus_countdown//60//60}h', colored.fore.GREEN) if self.active_rp_bonus else '']
 
             bonus_row = ['Bônus%', '%.2f%%' % self.bonus, colorChange(
                 bonus_session_change, format='{:+.2f}%'), colorChange(self.bonus_last_change, format='{:+.2f}%')]
@@ -212,7 +228,7 @@ class btcCrawler():
             info_detail = [WS]*5
 
         if(output != None):
-            if(len(output)>width):
+            if(len(output) > width):
                 output = output[:width]
             if(overhide):
                 outputList[-1] = [output]
@@ -253,10 +269,11 @@ class btcCrawler():
         if(not seconds):
             return
         self.printScreen(WS)
-        self.printScreen(
-            f'Waiting {seconds//60+1} minutes {what_for}', overhide=True)
-        time.sleep(seconds % 60)
-        seconds -= (seconds % 60)
+        if(seconds > 60):
+            self.printScreen(
+                f'Waiting {seconds//60+1} minutes {what_for}', overhide=True)
+            time.sleep(seconds % 60)
+            seconds -= (seconds % 60)
 
         while(seconds > 60):
             self.printScreen(
@@ -266,7 +283,7 @@ class btcCrawler():
 
         while(seconds):
             self.printScreen(
-                f'Waiting {seconds//60+1} minutes {what_for}', overhide=True)
+                f'Waiting {seconds} seconds {what_for}', overhide=True)
             time.sleep(1)
             print('\r', end='')
             seconds -= 1
@@ -299,9 +316,8 @@ class btcCrawler():
         pyautogui.press('f5')
         if(mode == 'manual'):
             skiped = self.waitOrSkip(what_for="user to roll", forever=True)
-        else:       #mode == 'auto'
+        else:  # mode == 'auto'
             skiped = self.waitOrSkip(LOAD_TIME, "page to load")
-        
 
         if(skiped):
             self.printScreen('Click done by user')
@@ -320,11 +336,10 @@ class btcCrawler():
             else:
                 pyautogui.press('end')
                 self.printScreen('Attempting to click on roll at (%d, %d)' %
-                                tuple(self.setting.roll_position))
+                                 tuple(self.setting.roll_position))
                 pyautogui.moveTo(self.setting.roll_position)
                 time.sleep(random())
                 pyautogui.click()
-
 
         # time.sleep(LOAD_TIME)
 

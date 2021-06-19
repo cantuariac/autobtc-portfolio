@@ -21,11 +21,6 @@ from btcCrawler import *
 tabulate.PRESERVE_WHITESPACE = True
 
 
-cookie2 = "__cfduid=df018db9b079168ae9361f82fec5bc2bb1620266270; btc_address=1CJ4vvSJefSpSb3v1k5xnxtEySBD1sBtGU; password=363acd1f069ecf92f61efb54be8072a1eeda3adab881cfc3577ca2661556ee06; have_account=1; login_auth=PcZ0ZH11rmArIQ152kKpwsjf; cookieconsent_dismissed=yes; last_play=1622671419; fbtc_session=hDvF63BWOwt59Q8hsEeovVfk; fbtc_userid=25043400; free_play_sound=1; csrf_token=nMyrr5NbZnfn"
-
-cookie = "__cfduid=d6d66739ea723b7e7b31e65579f1c23451620345821; have_account=1; login_auth=IpisF3uQjMNRglupS5YgxboO; cookieconsent_dismissed=yes; last_play=1621782731; csrf_token=2ijwVeB3kVxL; btc_address=19bJKkqJdhwKE11UJDkRkNkkvqDrXQArx; password=d87603930f1f4c00426a29ea75923bbf0819161134ac3bb2a82f6829af566fdd"
-
-
 class CustomEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, Log):
@@ -211,7 +206,7 @@ if __name__ == '__main__':
                 try:
                     btc.updatePageData(fetch_rates=True)
                     btc.wait(btcCrawler.checkRollTime(),
-                            'for next roll')
+                             'for next roll')
 
                     btc.updatePageData(fetch_rates=True)
                     log = btc.logChange()
@@ -224,24 +219,29 @@ if __name__ == '__main__':
                         btc.printScreen('Unknown change logged')
                     log = btc.rollSequence(args.mode)
                 except PageNotOpenException:
-                    btc.printScreen(stylize('Page not opened', colored.fore.RED))
+                    btc.printScreen(
+                        stylize('Page not opened', colored.fore.RED))
                     btc.printScreen('Waiting for user to open page')
                     time.sleep(LOAD_TIME)
                     consecutive_errors += 1
                     btc.printScreen('Reloading page and trying again')
                 except GameNotReady:
-                    btc.printScreen(stylize('Game not ready', colored.fore.RED))
+                    btc.printScreen(
+                        stylize('Game not ready', colored.fore.RED))
                     consecutive_errors += 1
                 except GameFailException:
-                    btc.printScreen(stylize('Game roll failed', colored.fore.RED))
+                    btc.printScreen(
+                        stylize('Game roll failed', colored.fore.RED))
                     consecutive_errors += 1
                     btc.printScreen('Reloading page and trying again')
                 except Exception as error:
-                    btc.printScreen(stylize(f'Unknown error:{error}', colored.fore.RED))
+                    btc.printScreen(
+                        stylize(f'Unknown error:{error}', colored.fore.RED))
                     print(error.with_traceback())
                     raise ExitException
                 else:
-                    btc.printScreen(stylize('Game roll successful at ' + datetime.fromisoformat(log.timestamp).strftime('%H:%M:%S'), colored.fore.GREEN))
+                    btc.printScreen(stylize('Game roll successful at ' + datetime.fromisoformat(
+                        log.timestamp).strftime('%H:%M:%S'), colored.fore.GREEN))
 
                     accounts[args.user_index - 1] = btc.increaseAccountRoll()
                     if btc.account.id in logs:
@@ -314,23 +314,29 @@ if __name__ == '__main__':
                     print(log)
         elif args.action == action.TEST:
             btc.printScreen('Running test sequence')
-            saveData()
-            # print(accounts)
-            # print(settings)
-            # print(json.dumps(accounts[1]._asdict(), indent=1))
-            # for res in settings:
-            # print(json.dumps(settings[res]._asdict(), indent=1))
-            # logs['2'] = [Log(datetime.now().isoformat(),
-            #                  0.00005643, random(), 34, 4, 0.5, 0.05)]
-            # time.sleep(random())
-            # logs['2'].append(Log(datetime.now().isoformat(),
-            #                      0.00005643, random(), 34, 4, 0.5, 0.05))
-            # s = json.dumps(logs, indent=2)
-            # s = s.replace('\n      ', ' ')
-            # s = s.replace('\n    ],', ' ],')
-            # s = s.replace('\n    ]', ' ]')
-            # print(s)
-            # saveLogs()
+
+            # fst_today = datetime.today().isoformat()
+            ls: list = logs['41748248']
+
+            today = datetime.today().date().isoformat()
+            week = datetime.today().strftime('%Y-%U')
+            month = datetime.today().strftime('%Y-%m')
+            fst_today = fst_week = fst_month = len(ls)-1
+            print(today, ls[fst_today])
+            
+            for i in range(len(ls)-1, -1, -1):
+                log_date = datetime.fromisoformat(ls[i].timestamp)
+                if(log_date.isoformat() > today):
+                    fst_today = i
+                if(log_date.strftime('%Y-%U') == week):
+                    fst_week = i
+                if(log_date.strftime('%Y-%m') == month):
+                    fst_month = i
+            
+            print(ls[fst_today])
+            print(ls[fst_week])
+            print(ls[fst_month])
+
     except ExitException as e:
         btc.printScreen(f'Script ended {e}')
     except KeyboardInterrupt:
