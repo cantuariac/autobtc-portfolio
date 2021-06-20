@@ -20,6 +20,14 @@ from btcCrawler import *
 
 tabulate.PRESERVE_WHITESPACE = True
 
+def userInput():
+    global command
+    while True:
+        command = input('> ')
+        if(command=='q'):
+            break
+        
+
 
 class CustomEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -84,6 +92,7 @@ DATA_FILE = 'data.json'
 logs = {}
 LOGS_FILE = 'logs.json'
 
+command = None
 
 class action:
     CONFIG = 'config'
@@ -208,7 +217,7 @@ if __name__ == '__main__':
                     btc.wait(btcCrawler.checkRollTime(),
                              'for next roll')
 
-                    btc.updatePageData(fetch_rates=True)
+                    btc.updatePageData()#fetch_rates=True)
                     log = btc.logChange()
                     if (log):
                         if btc.account.id in logs:
@@ -316,6 +325,14 @@ if __name__ == '__main__':
             btc.printScreen('Running test sequence')
 
             # fst_today = datetime.today().isoformat()
+            # t = threading.Thread(target=userInput)
+            # while True:
+            #     btc.wait(5, 'something')
+            #     if(command):
+            #         btc.printScreen()
+            #         btc.printScreen('command is '+command)
+            #         command=None
+            
             ls: list = logs['41748248']
 
             today = datetime.today().date().isoformat()

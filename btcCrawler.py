@@ -380,3 +380,25 @@ class btcCrawler():
         else:
             roll_time = datetime.strptime(output[4], '%Mm:%Ss')
             return roll_time.minute * 60 + roll_time.second
+
+class Logger():
+    
+    def __init__(self, logs:list, acc:Account):
+        self.logs = logs
+        self.account = acc
+
+        self.today = datetime.today().date().isoformat()
+        self.week = datetime.today().strftime('%Y-%U')
+        self.month = datetime.today().strftime('%Y-%m')
+
+        fst_today = fst_week = fst_month = len(self.logs)-1
+        
+        for i in range(len(ls)-1, -1, -1):
+            log_date = datetime.fromisoformat(ls[i].timestamp)
+            if(log_date.isoformat() > self.today):
+                fst_today = i
+            if(log_date.strftime('%Y-%U') == self.week):
+                fst_week = i
+            if(log_date.strftime('%Y-%m') == self.month):
+                fst_month = i
+    
