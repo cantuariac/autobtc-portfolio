@@ -393,12 +393,13 @@ class Logger():
 
         fst_today = fst_week = fst_month = len(self.logs)-1
         
-        for i in range(len(ls)-1, -1, -1):
-            log_date = datetime.fromisoformat(ls[i].timestamp)
+        for i in range(len(logs)-1, -1, -1):
+            log_date = datetime.fromisoformat(logs[i].timestamp)
             if(log_date.isoformat() > self.today):
                 fst_today = i
             if(log_date.strftime('%Y-%U') == self.week):
                 fst_week = i
             if(log_date.strftime('%Y-%m') == self.month):
                 fst_month = i
-    
+
+        # self.day_log = 

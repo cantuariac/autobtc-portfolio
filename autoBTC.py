@@ -213,7 +213,7 @@ if __name__ == '__main__':
             consecutive_errors = 0
             while(True):
                 try:
-                    btc.updatePageData(fetch_rates=True)
+                    btc.updatePageData()#fetch_rates=True)
                     btc.wait(btcCrawler.checkRollTime(),
                              'for next roll')
 
