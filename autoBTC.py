@@ -48,23 +48,9 @@ def saveData():
     fd = open(DATA_FILE, 'w')
     json.dump({
         'settings': {res: (settings[res]._asdict()) for res in settings},
-        'accounts': [acc._asdict() for acc in accounts],
+        'accounts': [acc.__dict__ for acc in accounts],
     }, fd, indent=2)
     fd.close()
-
-
-def loadData():
-    global settings, accounts
-    fd = open(DATA_FILE)
-    settings, accounts = json.load(fd).values()
-    accounts = [Account(**acc) for acc in accounts]
-    settings = {
-        res: Setting(tuple(settings[res]['roll_position']), tuple(
-            settings[res]['captcha_position']))
-        # res:Setting(tuple(settings[res][0]), tuple(settings[res][1]))
-        for res in settings}
-    fd.close()
-
 
 def saveLogs():
     global logs
@@ -77,12 +63,24 @@ def saveLogs():
     fd.close()
 
 
+def loadData():
+    global settings, accounts
+    fd = open(DATA_FILE)
+    settings, accounts = json.load(fd).values()
+    accounts = [Account(**acc) for acc in accounts]
+    settings = {
+        res: Setting(res, tuple(settings[res]['roll_position']), tuple(
+            settings[res]['captcha_position']))
+        # res:Setting(tuple(settings[res][0]), tuple(settings[res][1]))
+        for res in settings}
+    fd.close()
+
 def loadLogs():
     global logs
     fd = open(LOGS_FILE)
     logs = json.load(fd)
     for id in logs:
-        logs[id] = [Log(*log) for log in logs[id]]
+        logs[id] = [ChangeLog(*log) for log in logs[id]]
     fd.close()
 
 
@@ -332,27 +330,46 @@ if __name__ == '__main__':
             #         btc.printScreen()
             #         btc.printScreen('command is '+command)
             #         command=None
-            
-            ls: list = logs['41748248']
+            # logs2 = {}
+            # for acc in logs:
+            #     logs2[acc] = [ChangeLog(l.timestamp, l.btc_balance, l.rp_balance, l.bonus, l.btc_gained, l.rp_gained, l.bonus_loss) for l in logs[acc]]
 
-            today = datetime.today().date().isoformat()
-            week = datetime.today().strftime('%Y-%U')
-            month = datetime.today().strftime('%Y-%m')
-            fst_today = fst_week = fst_month = len(ls)-1
-            print(today, ls[fst_today])
+            # accounts2 = [Account2( *acc) for acc in accounts]
             
-            for i in range(len(ls)-1, -1, -1):
-                log_date = datetime.fromisoformat(ls[i].timestamp)
-                if(log_date.isoformat() > today):
-                    fst_today = i
-                if(log_date.strftime('%Y-%U') == week):
-                    fst_week = i
-                if(log_date.strftime('%Y-%m') == month):
-                    fst_month = i
-            
-            print(ls[fst_today])
-            print(ls[fst_week])
-            print(ls[fst_month])
+            # fd = open(DATA_FILE, 'w')
+            # json.dump({
+            #     'settings': {res: (settings[res]._asdict()) for res in settings},
+            #     'accounts': [acc.__dict__ for acc in accounts2],
+            # }, fd, indent=2)
+            # fd.close()
+            # s = json.dumps(logs2, indent=2)
+            # s = s.replace('\n      ', ' ')
+            # s = s.replace('\n    ],', ' ],')
+            # s = s.replace('\n    ]', ' ]')
+            # fd = open(LOGS_FILE, 'w')
+            # fd.write(s)
+            # fd.close()
+            # for k in logs:
+            #     print(logs[k][-1])
+            # for acc in accounts:
+            #     print(acc)
+            # for r in settings:
+            #     print(settings[r])
+            # saveData()
+            # saveLogs()
+            # last = State(*logs2[-1][:4])
+            # logger = Logger(accounts[1], logs2, last)
+
+            # logger.current_change()
+            # print(logs2[-1])
+            # logger.updateState(State(datetime.now().isoformat(), last.btc+0.00000006, last.rp+100, last.bonus-0.01))
+            # print(logs2[-1])
+            # logger.current_change()
+
+            # print(logger.last_state)
+            # print("today:",logger.day_start_state-logger.last_state)
+            # print('this week:',logger.week_start_state-logger.last_state)
+            # print('this month:', logger.month_start_state-logger.last_state)
 
     except ExitException as e:
         btc.printScreen(f'Script ended {e}')

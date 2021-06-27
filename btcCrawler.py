@@ -3,6 +3,7 @@
 
 from bs4 import BeautifulSoup
 from typing import NamedTuple
+from dataclasses import dataclass
 import os
 import time
 import pyautogui
@@ -14,6 +15,8 @@ from random import random
 from colored import stylize
 import colored
 import tabulate
+
+from logger import *
 
 tabulate.PRESERVE_WHITESPACE = True
 
@@ -38,7 +41,17 @@ class GameNotReady(Exception):
     pass
 
 
-class Account(NamedTuple):
+# class Account(NamedTuple):
+#     id: str = None
+#     email: str = None
+#     cookie: str = None
+#     total_rolls: int = 0
+
+#     def __str__(self) -> str:
+#         return f'Account(id={self.id}, email={self.email}, total_rolls={self.total_rolls})'
+
+@dataclass
+class Account():
     id: str = None
     email: str = None
     cookie: str = None
@@ -47,13 +60,42 @@ class Account(NamedTuple):
     def __str__(self) -> str:
         return f'Account(id={self.id}, email={self.email}, total_rolls={self.total_rolls})'
 
-
 class Setting(NamedTuple):
+    resolution: str
     roll_position: tuple
     captcha_position: tuple
 
     def __str__(self) -> str:
-        return f'(roll_position={self.roll_position}, captcha_position={self.captcha_position})'
+        return f'Setting(resolution={self.resolution}, roll_position={self.roll_position}, captcha_position={self.captcha_position})'
+
+
+class ChangeLog(NamedTuple):
+    timestamp: str
+    btc: float
+    rp: int
+    bonus: float
+    btc_change: float
+    rp_change: int
+    bonus_change: float
+
+    def __str__(self) -> str:
+        return 'ChangeLog(timestamp={date}, btc={1:.8f}, rp={2}, bonus={3:.2f}, btc_change={4:.8f}, rp_change={5}, bonus_change={6:.2f})'.format(*self, date=datetime.fromisoformat(self.timestamp).strftime("%H:%m:%M %d-%b-%Y"))
+
+
+class State(NamedTuple):
+    timestamp: str
+    btc: float
+    rp: int
+    bonus: float
+
+    def __str__(self) -> str:
+        return 'State(timestamp={date}, btc={1:.8f}, rp={2}, bonus={3:.2f}'.format(*self, date=datetime.fromisoformat(self.timestamp).strftime("%H:%m:%M %d-%b-%Y"))
+
+    def __sub__(self, other) -> ChangeLog:
+        if self.timestamp > other.timestamp:
+            return ChangeLog(self.timestamp, self.btc, self.rp, self.bonus, self.btc-other.btc, self.rp-other.rp, self.bonus-other.bonus)
+        else:
+            return ChangeLog(other.timestamp, other.btc, other.rp, other.bonus, other.btc-self.btc, other.rp-self.rp, other.bonus-self.bonus)
 
 
 class Log(NamedTuple):
@@ -87,9 +129,10 @@ class btcCrawler():
     brl_rate_last = None
     usd_rate_last = None
 
-    def __init__(self, acc: Account = None, setting: Setting = None):
+    def __init__(self, acc: Account = None, logger: Logger = None, setting: Setting = None):
         self.account = acc
         self.setting = setting
+        self.logger = logger
         self.btc_last_change = self.bonus_last_change = 0.0
         self.rp_last_change = 0
         self.last_roll_timestamp = datetime.now()
@@ -187,6 +230,7 @@ class btcCrawler():
         self.rolls += 1
         return(Account(self.account.id, self.account.email, self.account.cookie, self.rolls))
 
+    @staticmethod
     def printScreen(self, output=None, clear=True, overhide=False):
         global outputList
 
@@ -381,25 +425,4 @@ class btcCrawler():
             roll_time = datetime.strptime(output[4], '%Mm:%Ss')
             return roll_time.minute * 60 + roll_time.second
 
-class Logger():
-    
-    def __init__(self, logs:list, acc:Account):
-        self.logs = logs
-        self.account = acc
 
-        self.today = datetime.today().date().isoformat()
-        self.week = datetime.today().strftime('%Y-%U')
-        self.month = datetime.today().strftime('%Y-%m')
-
-        fst_today = fst_week = fst_month = len(self.logs)-1
-        
-        for i in range(len(logs)-1, -1, -1):
-            log_date = datetime.fromisoformat(logs[i].timestamp)
-            if(log_date.isoformat() > self.today):
-                fst_today = i
-            if(log_date.strftime('%Y-%U') == self.week):
-                fst_week = i
-            if(log_date.strftime('%Y-%m') == self.month):
-                fst_month = i
-
-        # self.day_log = 
