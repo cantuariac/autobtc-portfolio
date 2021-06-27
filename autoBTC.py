@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import argparse
+from logger import Logger
 from typing import NamedTuple
 import os
 import sys
@@ -197,7 +198,9 @@ if __name__ == '__main__':
                 raise ExitException
 
             btc.setting = settings[resolution]
+            acc = accounts[args.user_index-1]
             # print(accounts[args.user_index-1])
+            logger = Logger(acc, logs[acc.id])
             btc.setAccount(accounts[args.user_index-1])
 
             if(not hasattr(args, 'mode')):
