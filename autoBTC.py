@@ -145,6 +145,8 @@ if __name__ == '__main__':
                                        help="Show a report from saved data")
     report.add_argument(
         'action', action='store_const', const=action.REPORT)
+    report.add_argument('-i', '--user-index', action='store', type=int, default=1,
+                     help='Select user by index')
 
     test = command_parser.add_parser('test',
                                      help="test script")
@@ -221,13 +223,14 @@ if __name__ == '__main__':
             while(True):
                 try:
                     btcbot.updatePageData()  # fetch_rates=True)
+                    if (logger.updateState(btcbot.current_state)):
+                        saveLogs()
+                        printScreen('Unknown change logged', btcbot)
+                    
                     btcbot.wait(BTCBot.checkRollTime(),
                                 'for next roll')
 
                     btcbot.updatePageData()  # fetch_rates=True)
-                    if (logger.updateState(btcbot.current_state)):
-                        saveLogs()
-                        printScreen('Unknown change logged', btcbot)
 
                     log = btcbot.rollSequence(args.mode)
                 except PageNotOpenException:
@@ -306,14 +309,16 @@ if __name__ == '__main__':
 
             sett_i = next((i for i, s in enumerate(settings)
                            if s.resolution == resolution), None)
-            if(sett_i):
+            if(sett_i!=None):
+                printScreen(f'Updating setting {settings[sett_i].resolution}')
                 settings[sett_i] = Setting(
                     resolution, roll_position, captcha_position)
             else:
+                printScreen(f'New setting {settings[sett_i].resolution}')
                 settings.append(
                     Setting(resolution, roll_position, captcha_position))
             saveData()
-            printScreen('Settings saved')
+            printScreen(f'Settings saved {sett_i}')
 
         elif args.action == action.USERS:
             if(args.cookie):
@@ -321,7 +326,11 @@ if __name__ == '__main__':
                 # btcbot = BTCBot()
                 acc = Account(cookie=args.cookie)
                 accounts.append(acc)
+                if not acc.id in logs:
+                    logs[acc.id] = [
+                        State(datetime.today().isoformat(), 0.0, 0, 1.0)]
                 saveData()
+                saveLogs()
                 printScreen(f"{acc} created")
             if accounts:
                 printScreen("Saved user accounts:")
@@ -331,9 +340,19 @@ if __name__ == '__main__':
                 printScreen("No user accounts saved")
 
         elif args.action == action.REPORT:
-            for u in logs:
-                for log in logs[u][-5:]:
-                    print(log)
+            
+            # print(args)
+            printScreen("Generating log report")
+            setting = next(
+                (s for s in settings if s.resolution == resolution), None)
+            acc = accounts[args.user_index-1]
+            # print(accounts[args.user_index-1])
+            if not acc.id in logs:
+                logs[acc.id] = [
+                    State(datetime.today().isoformat(), 0.0, 0, 1.0)]
+            logger = Logger(acc, logs[acc.id])
+            btcbot = BTCBot(acc, logger, setting)
+            printScreen("Report loaded", btcbot)
         elif args.action == action.TEST:
             printScreen('Running test sequence')
 
@@ -343,11 +362,19 @@ if __name__ == '__main__':
             # settings2 = [Setting(res, tuple(settings2[res]['roll_position']), tuple(settings2[res]['captcha_position']))
             #              for res in settings2]
             # fd.close()
-            for s in settings:
-                print(s)
-            for a in accounts:
-                print(a)
-            saveData()
+            # for s in settings:
+            #     print(s)
+            # for a in accounts:
+            #     print(a)
+            # print(args)
+            # acc = accounts[args.user_index-1]
+            # # print(accounts[args.user_index-1])
+            # if not acc.id in logs:
+            #     logs[acc.id] = [
+            #         State(datetime.today().isoformat(), 0.0, 0, 1.0)]
+            # logger = Logger(acc, logs[acc.id])
+            # btcbot = BTCBot(acc, logger, setting)
+            # saveData()
             # print(next(s for s in settings2 if s.resolution == 'as', ))
             # print(json.dumps(settings, indent=1))
             # print(json.dumps(accounts2, indent=1, cls=CustomEncoder))

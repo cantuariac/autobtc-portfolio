@@ -23,17 +23,23 @@ class Logger():
     def __init__(self, acc: Account, logs: list, state: State = None):
         self.logs = logs
         self.account = acc
+        if(not state):
+            state = State(*self.logs[-1][:4])
 
         self.init_day = datetime.today().date().isoformat()
         self.session_first_state = self.last_state = State(*self.logs[-1][:4])
-        self.last_change = ChangeLog(*self.last_state, 0,0,0)
-        self.session_change = ChangeLog(*self.last_state, 0,0,0)
-        self.day_change = ChangeLog(*self.last_state, 0,0,0)
-        self.week_change = ChangeLog(*self.last_state, 0,0,0)
-        self.month_change = ChangeLog(*self.last_state, 0,0,0)
+        # self.last_change = ChangeLog(*self.last_state, 0,0,0)
+        # self.session_change = ChangeLog(*self.last_state, 0,0,0)
+        # self.day_change = ChangeLog(*self.last_state, 0,0,0)
+        # self.week_change = ChangeLog(*self.last_state, 0,0,0)
+        # self.month_change = ChangeLog(*self.last_state, 0,0,0)
         self.setStartStates()
-        if(state):
-            self.updateState(state)
+        self.last_change = self.last_state - state
+        self.session_change = self.session_first_state - state
+        self.day_change = self.day_first_state - state
+        self.week_change = self.week_first_state - state
+        self.month_change = self.month_first_state - state
+        self.updateState(state)
     
     def setStartStates(self):
         today = datetime.today().date().isoformat()
@@ -78,6 +84,6 @@ class Logger():
         if(datetime.today().date().isoformat() > self.init_day):
             self.setStartStates()
         print("today:\t\t", self.day_first_state-self.last_state)
-        print("this session:\t", self.session_start_state-self.last_state)
+        print("this session:\t", self.session_first_state-self.last_state)
         print('this week:\t', self.week_first_state-self.last_state)
         print('this month:\t', self.month_first_state-self.last_state)

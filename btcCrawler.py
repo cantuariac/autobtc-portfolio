@@ -21,7 +21,7 @@ from logger import *
 
 tabulate.PRESERVE_WHITESPACE = True
 
-width = 85
+width = 91
 height = 15
 WS = '⠀'
 NAME = WS*((width-7)//2)+stylize('autoBTC',
@@ -42,7 +42,7 @@ def colorChange(value, base=0, format='{:+}'):
 
 class BTCBot():
 
-    label_row = ['', ' Current', '  Session', '    Last']
+    label_row = ['', ' Current', '   Month', '    Week', '     Day', '  Session', '    Last']
 
     def __init__(self, acc: Account, logger: Logger, setting: Setting):
         self.account = acc
@@ -309,21 +309,32 @@ def printScreen(output=None, btcbot: BTCBot = None, clear=True, overhide=False):
         # btc_session_change = btcbot.btc_balance - btcbot.btc_start
         # rp_session_change = btcbot.rp_balance - btcbot.rp_start
         # bonus_session_change = btcbot.bonus - btcbot.bonus_start
-        rolls_session = btcbot.rolls - btcbot.account.total_rolls
+        rolls_session = btcbot.account.total_rolls - btcbot.rolls
 
-        btc_row = ['BTC', '%.8f' % btcbot.current_state.btc, colorChange(
-            btcbot.logger.session_change.btc_change, format='{:+.8f}'), colorChange(btcbot.logger.last_change.btc_change, format='{:+.8f}')]
+        btc_row = ['BTC', '%.8f' % btcbot.current_state.btc,
+            colorChange(btcbot.logger.month_change.btc_change, format='{:+.8f}'),
+            colorChange(btcbot.logger.week_change.btc_change, format='{:+.8f}'),
+            colorChange(btcbot.logger.day_change.btc_change, format='{:+.8f}'),
+            colorChange(btcbot.logger.session_change.btc_change, format='{:+.8f}'),
+            colorChange(btcbot.logger.last_change.btc_change, format='{:+.8f}')]
 
         rp_row = ['RP', btcbot.current_state.rp,
-                    colorChange(btcbot.logger.session_change.rp_change),
-                    colorChange(btcbot.logger.last_change.rp_change),
-                    stylize(f'{btcbot.active_rp_bonus} for {btcbot.bonus_countdown//60//60}h', colored.fore.GREEN) if btcbot.active_rp_bonus else '']
+            colorChange(btcbot.logger.month_change.rp_change),
+            colorChange(btcbot.logger.week_change.rp_change),
+            colorChange(btcbot.logger.day_change.rp_change),
+            colorChange(btcbot.logger.session_change.rp_change),
+            colorChange(btcbot.logger.last_change.rp_change)]#,
+            # stylize(f'{btcbot.active_rp_bonus} for {btcbot.bonus_countdown//60//60}h', colored.fore.GREEN) if btcbot.active_rp_bonus else '']
 
-        bonus_row = ['Bônus%', '%.2f%%' % btcbot.current_state.bonus, colorChange(
-            btcbot.logger.session_change.bonus_change, format='{:+.2f}%'), colorChange(btcbot.logger.last_change.bonus_change, format='{:+.2f}%')]
+        bonus_row = ['Bônus%', '%.2f%%' % btcbot.current_state.bonus, 
+            colorChange(btcbot.logger.month_change.bonus_change, format='{:+.2f}%'),
+            colorChange(btcbot.logger.week_change.bonus_change, format='{:+.2f}%'),
+            colorChange(btcbot.logger.day_change.bonus_change, format='{:+.2f}%'),
+            colorChange(btcbot.logger.session_change.bonus_change, format='{:+.2f}%'),
+            colorChange(btcbot.logger.last_change.bonus_change, format='{:+.2f}%')]
 
-        rolls_row = ['Rolls', btcbot.rolls, colorChange(
-            rolls_session, format='{:+d}')]
+        rolls_row = ['Rolls', btcbot.account.total_rolls, "","","",
+            colorChange(rolls_session, format='{:+d}')]
 
         info_detail = [
             BTCBot.label_row,
