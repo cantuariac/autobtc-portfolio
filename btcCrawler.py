@@ -3,6 +3,7 @@
 
 from bs4 import BeautifulSoup
 from typing import NamedTuple
+from dataclasses import dataclass
 import os
 import time
 import pyautogui
@@ -15,9 +16,12 @@ from colored import stylize
 import colored
 import tabulate
 
+from mytypes import *
+from logger import *
+
 tabulate.PRESERVE_WHITESPACE = True
 
-width = 85
+width = 91
 height = 15
 WS = '⠀'
 NAME = WS*((width-7)//2)+stylize('autoBTC',
@@ -25,49 +29,6 @@ NAME = WS*((width-7)//2)+stylize('autoBTC',
 LOAD_TIME = 10
 outputList = [[WS]]*height
 
-
-class GameFailException(Exception):
-    pass
-
-
-class PageNotOpenException(Exception):
-    pass
-
-
-class GameNotReady(Exception):
-    pass
-
-
-class Account(NamedTuple):
-    id: str = None
-    email: str = None
-    cookie: str = None
-    total_rolls: int = 0
-
-    def __str__(self) -> str:
-        return f'Account(id={self.id}, email={self.email}, total_rolls={self.total_rolls})'
-
-
-class Setting(NamedTuple):
-    roll_position: tuple
-    captcha_position: tuple
-
-    def __str__(self) -> str:
-        return f'(roll_position={self.roll_position}, captcha_position={self.captcha_position})'
-
-
-class Log(NamedTuple):
-    timestamp: str
-    btc_balance: float
-    btc_gained: float
-    rp_balance: int
-    rp_gained: int
-    bonus: float
-    bonus_loss: float
-
-    def __str__(self) -> str:
-        return 'Log({date}, {1:.8f}, {2:.8f}, {3}, {4}, {5:.2f}, {6:.2f})'.format(*self, date=datetime.fromisoformat(self.timestamp).strftime("%d-%b-%Y-%H:%m:%M"))
-        # return 'Log({0}, {1:.8f}, {2:.8f}, {3}, {4}, {5:.2f}, {6:.2f})'.format(*self)
 
 
 def colorChange(value, base=0, format='{:+}'):
@@ -79,44 +40,42 @@ def colorChange(value, base=0, format='{:+}'):
         return format.format(value)
 
 
-class btcCrawler():
+class BTCBot():
 
-    label_row = ['', ' Current', '  Session', '    Last']
-    brl_rate = None
-    usd_rate = None
-    brl_rate_last = None
-    usd_rate_last = None
+    label_row = ['', ' Current', '   Month', '    Week', '     Day', '  Session', '    Last']
 
-    def __init__(self, acc: Account = None, setting: Setting = None):
+    def __init__(self, acc: Account, logger: Logger, setting: Setting):
         self.account = acc
         self.setting = setting
-        self.btc_last_change = self.bonus_last_change = 0.0
-        self.rp_last_change = 0
-        self.last_roll_timestamp = datetime.now()
+        self.logger = logger
 
-        if(self.account):
-            self.updatePageData()
-            self.btc_start = self.btc_last = self.btc_balance
-            self.rp_start = self.rp_last = self.rp_balance
-            self.bonus_start = self.bonus_last = self.bonus
-            self.rolls = self.account.total_rolls
+        # self.btc_last_change = self.bonus_last_change = 0.0
+        # self.rp_last_change = 0
+        # self.last_roll_timestamp = datetime.now()
 
-            if(not acc.id):
-                self.account = Account(self.account_id, self.account_email,
-                                       acc.cookie, acc.total_rolls)
+        self.updatePageData()
+        self.logger.updateState(self.current_state)
+        
+        # self.btc_start = self.btc_last = self.btc_balance
+        # self.rp_start = self.rp_last = self.rp_balance
+        # self.bonus_start = self.bonus_last = self.bonus
+        self.rolls = self.account.total_rolls
 
-        btcCrawler.updateBTCprice()
-        btcCrawler.brl_rate_last = btcCrawler.brl_rate
-        btcCrawler.usd_rate_last = btcCrawler.usd_rate
+        if(not acc.id):
+            # self.account = Account(self.account_id, self.account_email,
+            #                         acc.cookie, acc.total_rolls)
+            self.account.id = self.account_id
+            self.account.email = self.account_email
 
-    def updatePageData(self, fetch_rates=False):
+
+    def updatePageData(self):
 
         session = requests.Session()
         response = session.get('https://freebitco.in', headers={
             "Cookie": self.account.cookie,
             "User-Agent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:88.0) Gecko/20100101 Firefox/88.0"
         })
-        self.last_update_timestamp = datetime.now()
+        update_timestamp = datetime.now()
         html = response.text
 
         soup = BeautifulSoup(html, 'html.parser')
@@ -134,177 +93,121 @@ class btcCrawler():
         else:
             self.bonus_countdown = 0
             self.active_rp_bonus = None
-
-        btc_balance_str = soup.select_one('#balance_small').text
-        self.btc_balance = float(btc_balance_str)
-        self.satoshi_balance = int(btc_balance_str.replace('.', ''))
-        self.rp_balance = int(soup.select_one(
-            '.user_reward_points').text.replace(',', ''))
-        self.bonus = float(soup.select_one('#fp_bonus_req_completed').text)
-
         self.promotion = soup.select_one(
             '.free_play_bonus_box_span_large').text
+        
+        btc_balance_str = soup.select_one('#balance_small').text
+        btc_balance = float(btc_balance_str)
+        satoshi_balance = int(btc_balance_str.replace('.', ''))
+        rp_balance = int(soup.select_one(
+            '.user_reward_points').text.replace(',', ''))
+        bonus = float(soup.select_one('#fp_bonus_req_completed').text)
 
-        if(fetch_rates):
-            btcCrawler.updateBTCprice()
+        self.current_state = State(update_timestamp.isoformat(), btc_balance, rp_balance, bonus)
 
-    def setAccount(self, account: Account):
+        # if(fetch_rates):
+        #     BTCBot.updateBTCprice()
+        
+        # return 
 
-        self.account = account
-        self.updatePageData()
-        self.btc_start = self.btc_last = self.btc_balance
-        self.rp_start = self.rp_last = self.rp_balance
-        self.bonus_start = self.bonus_last = self.bonus
-        self.rolls = self.account.total_rolls
+    # def setAccount(self, account: Account):
 
-        if(not account.id):
-            self.account = Account(self.account_id, self.account_email,
-                                   account.cookie, account.total_rolls)
+    #     self.account = account
+    #     self.updatePageData()
+    #     self.btc_start = self.btc_last = self.btc_balance
+    #     self.rp_start = self.rp_last = self.rp_balance
+    #     self.bonus_start = self.bonus_last = self.bonus
+    #     self.rolls = self.account.total_rolls
 
-    def logChange(self):
-        self.btc_last_change = self.btc_balance - self.btc_last
-        self.rp_last_change = self.rp_balance - self.rp_last
-        self.bonus_last_change = self.bonus - self.bonus_last
+    #     if(not account.id):
+    #         self.account = Account(self.account_id, self.account_email,
+    #                                account.cookie, account.total_rolls)
 
-        log = False
-        if(self.btc_last_change != 0):
-            self.btc_last = self.btc_balance
-            log = True
-        if(self.rp_last_change != 0):
-            self.rp_last = self.rp_balance
-            log = True
-        if(self.bonus_last_change != 0):
-            self.bonus_last = self.bonus
-            log = True
+    # def logChange(self):
+    #     self.btc_last_change = self.btc_balance - self.btc_last
+    #     self.rp_last_change = self.rp_balance - self.rp_last
+    #     self.bonus_last_change = self.bonus - self.bonus_last
 
-        if(log):
-            return Log(datetime.now().isoformat(), self.btc_balance, self.btc_last_change, self.rp_balance,
-                       self.rp_last_change, self.bonus, self.bonus_last_change)
-        else:
-            return None
+    #     log = False
+    #     if(self.btc_last_change != 0):
+    #         self.btc_last = self.btc_balance
+    #         log = True
+    #     if(self.rp_last_change != 0):
+    #         self.rp_last = self.rp_balance
+    #         log = True
+    #     if(self.bonus_last_change != 0):
+    #         self.bonus_last = self.bonus
+    #         log = True
+
+    #     if(log):
+    #         return Log(datetime.now().isoformat(), self.btc_balance, self.btc_last_change, self.rp_balance,
+    #                    self.rp_last_change, self.bonus, self.bonus_last_change)
+    #     else:
+    #         return None
 
     def increaseAccountRoll(self):
         self.rolls += 1
         return(Account(self.account.id, self.account.email, self.account.cookie, self.rolls))
 
-    def printScreen(self, output=None, clear=True, overhide=False):
-        global outputList
-
-        btc_info_row = [  # ['asd']]
-            [f'BTC price', f'R$ {colorChange(btcCrawler.brl_rate, btcCrawler.brl_rate_last, "{:,.2f}")}', f' $ {colorChange(btcCrawler.usd_rate, btcCrawler.usd_rate_last, "{:,.2f}")}']]
-
-        if(self.account):
-            account_info_row = [['Account', self.account.email,
-                                 'Last updated', self.last_update_timestamp.strftime('%H:%M:%S %d-%m-%y')]]
-
-            btc_session_change = self.btc_balance - self.btc_start
-            rp_session_change = self.rp_balance - self.rp_start
-            bonus_session_change = self.bonus - self.bonus_start
-            rolls_session = self.rolls - self.account.total_rolls
-
-            btc_row = ['BTC', '%.8f' % self.btc_balance, colorChange(
-                btc_session_change, format='{:+.8f}'), colorChange(self.btc_last_change, format='{:+.8f}')]
-
-            rp_row = ['RP', self.rp_balance,
-                      colorChange(rp_session_change),
-                      colorChange(self.rp_last_change),
-                      stylize(f'{self.active_rp_bonus} for {self.bonus_countdown//60//60}h', colored.fore.GREEN) if self.active_rp_bonus else '']
-
-            bonus_row = ['Bônus%', '%.2f%%' % self.bonus, colorChange(
-                bonus_session_change, format='{:+.2f}%'), colorChange(self.bonus_last_change, format='{:+.2f}%')]
-
-            rolls_row = ['Rolls', self.rolls, colorChange(
-                rolls_session, format='{:+d}')]
-
-            info_detail = [
-                btcCrawler.label_row,
-                btc_row,
-                rp_row,
-                bonus_row,
-                rolls_row,
-            ]
-        else:
-            account_info_row = [WS]
-            info_detail = [WS]*5
-
-        if(output != None):
-            if(len(output) > width):
-                output = output[:width]
-            if(overhide):
-                outputList[-1] = [output]
-            else:
-                outputList = (
-                    outputList + [[output]])[-height:]
-
-        s = tabulate.tabulate([
-            [NAME],
-            [tabulate.tabulate(btc_info_row, tablefmt='presto')],
-            [tabulate.tabulate(account_info_row, tablefmt='presto')],
-            [tabulate.tabulate(info_detail, tablefmt='presto',
-                               colalign=("right",))],
-            [tabulate.tabulate(outputList[6:],
-                               tablefmt='plain')]],
-            tablefmt='fancy_grid')
-        if(clear):
-            print(f'\033[{height+8}A', end='')
-        print(s)
+    # @staticmethod
+    
 
     # @staticmethod
     def focusOrOpenPage(self):
 
-        if(not btcCrawler.isPageOpened()):
+        if(not BTCBot.isPageOpened()):
             return False
             os.system('firefox --new-window https://freebitco.in &')
-            self.printScreen('Waiting for browser to open')
+            printScreen('Waiting for browser to open', self)
             while(not btcCrawler.isPageOpened()):
                 time.sleep(1)
         else:
             os.system('wmctrl -a FreeBitco.in')
 
         time.sleep(0.5)
-        self.printScreen('freebitco.in page is ready')
+        printScreen('freebitco.in page is ready', self)
         return True
 
     def wait(self, seconds, what_for=''):
         if(not seconds):
             return
-        self.printScreen(WS)
+        printScreen(WS, self)
         if(seconds > 60):
-            self.printScreen(
-                f'Waiting {seconds//60+1} minutes {what_for}', overhide=True)
+            printScreen(
+                f'Waiting {seconds//60+1} minutes {what_for}', self, overhide=True)
             time.sleep(seconds % 60)
             seconds -= (seconds % 60)
 
         while(seconds > 60):
-            self.printScreen(
-                f'Waiting {seconds//60+1} minutes {what_for}', overhide=True)
+            printScreen(
+                f'Waiting {seconds//60+1} minutes {what_for}', self, overhide=True)
             time.sleep(60)
             seconds -= 60
 
         while(seconds):
-            self.printScreen(
-                f'Waiting {seconds} seconds {what_for}', overhide=True)
+            printScreen(
+                f'Waiting {seconds} seconds {what_for}', self, overhide=True)
             time.sleep(1)
             print('\r', end='')
             seconds -= 1
-        self.printScreen(f'Ready {what_for}')
+        printScreen(f'Ready {what_for}')
 
     def waitOrSkip(self, seconds=LOAD_TIME, what_for: str = 'something', forever=False):
         seconds *= (1+random())
         if(forever):
-            self.printScreen(f'Waiting for {what_for}')
+            printScreen(f'Waiting for {what_for}', self)
         else:
-            self.printScreen(f'Waiting {int(seconds)} seconds for {what_for}')
+            printScreen(f'Waiting {int(seconds)} seconds for {what_for}', self)
         while(seconds > 0 or forever):
             time.sleep(1)
             seconds -= 1
             if(forever):
-                self.printScreen(
-                    f'Waiting for {what_for}', overhide=True)
+                printScreen(
+                    f'Waiting for {what_for}', self, overhide=True)
             else:
-                self.printScreen(
-                    f'Waiting {int(seconds)} seconds for {what_for}', overhide=True)
-            if(btcCrawler.checkRollTime()):
+                printScreen(
+                    f'Waiting {int(seconds)} seconds for {what_for}', self, overhide=True)
+            if(BTCBot.checkRollTime()):
                 return True
         return False
 
@@ -320,11 +223,11 @@ class btcCrawler():
             skiped = self.waitOrSkip(LOAD_TIME, "page to load")
 
         if(skiped):
-            self.printScreen('Click done by user')
+            printScreen('Click done by user', self)
         else:
             pyautogui.press('end')
-            self.printScreen(
-                'Attempting to click on CAPTCHA at (%d, %d)' % tuple(self.setting.captcha_position))
+            printScreen(
+                'Attempting to click on CAPTCHA at (%d, %d)' % tuple(self.setting.captcha_position), self)
             pyautogui.moveTo(self.setting.captcha_position)
             time.sleep(random())
             pyautogui.click()
@@ -332,11 +235,11 @@ class btcCrawler():
             skiped = self.waitOrSkip(LOAD_TIME, "captcha to solve")
 
             if(skiped):
-                self.printScreen('Click done by user')
+                printScreen('Click done by user', self)
             else:
                 pyautogui.press('end')
-                self.printScreen('Attempting to click on roll at (%d, %d)' %
-                                 tuple(self.setting.roll_position))
+                printScreen('Attempting to click on roll at (%d, %d)' %
+                                 tuple(self.setting.roll_position), self)
                 pyautogui.moveTo(self.setting.roll_position)
                 time.sleep(random())
                 pyautogui.click()
@@ -345,23 +248,23 @@ class btcCrawler():
 
         if(skiped or self.waitOrSkip(LOAD_TIME, 'game to roll')):
             self.updatePageData()
-            log = self.logChange()
+            # log = self.logChange()
+            change = self.logger.updateState(self.current_state)
             pyautogui.keyDown('altleft')
             pyautogui.press('tab')
             pyautogui.keyUp('altleft')
 
-            if (not log):
+            if (not change):
                 raise GameNotReady
-            return log
         else:
             raise GameFailException
 
-    @staticmethod
-    def updateBTCprice():
-        j = json.loads(requests.get(
-            'https://api.coindesk.com/v1/bpi/currentprice/BRL.json', timeout=5).text)
-        btcCrawler.brl_rate = j['bpi']['BRL']['rate_float']
-        btcCrawler.usd_rate = j['bpi']['USD']['rate_float']
+    # @staticmethod
+    # def updateBTCprice():
+    #     j = json.loads(requests.get(
+    #         'https://api.coindesk.com/v1/bpi/currentprice/BRL.json', timeout=5).text)
+    #     BTCBot.brl_rate = j['bpi']['BRL']['rate_float']
+    #     BTCBot.usd_rate = j['bpi']['USD']['rate_float']
 
     @staticmethod
     def isPageOpened():
@@ -381,25 +284,87 @@ class btcCrawler():
             roll_time = datetime.strptime(output[4], '%Mm:%Ss')
             return roll_time.minute * 60 + roll_time.second
 
-class Logger():
-    
-    def __init__(self, logs:list, acc:Account):
-        self.logs = logs
-        self.account = acc
+brl_rate = usd_rate = 0
+def updateBTCprice():
+    global brl_rate, brl_rate_last, usd_rate, usd_rate_last
+    j = json.loads(requests.get(
+        'https://api.coindesk.com/v1/bpi/currentprice/BRL.json', timeout=5).text)
+    brl_rate_last = brl_rate
+    usd_rate_last = usd_rate
+    brl_rate = j['bpi']['BRL']['rate_float']
+    usd_rate = j['bpi']['USD']['rate_float']
 
-        self.today = datetime.today().date().isoformat()
-        self.week = datetime.today().strftime('%Y-%U')
-        self.month = datetime.today().strftime('%Y-%m')
+updateBTCprice()
 
-        fst_today = fst_week = fst_month = len(self.logs)-1
-        
-        for i in range(len(logs)-1, -1, -1):
-            log_date = datetime.fromisoformat(logs[i].timestamp)
-            if(log_date.isoformat() > self.today):
-                fst_today = i
-            if(log_date.strftime('%Y-%U') == self.week):
-                fst_week = i
-            if(log_date.strftime('%Y-%m') == self.month):
-                fst_month = i
+def printScreen(output=None, btcbot: BTCBot = None, clear=True, overhide=False):
+    global outputList
 
-        # self.day_log = 
+    btc_info_row = [  # ['asd']]
+        [f'BTC price', f'R$ {colorChange(brl_rate, brl_rate_last, "{:,.2f}")}', f' $ {colorChange(usd_rate, usd_rate_last, "{:,.2f}")}']]
+
+    if(btcbot):
+        account_info_row = [['Account', btcbot.account.email,
+                                'Last updated', datetime.fromisoformat(btcbot.current_state.timestamp).strftime('%H:%M:%S %d-%m-%y')]]
+
+        # btc_session_change = btcbot.btc_balance - btcbot.btc_start
+        # rp_session_change = btcbot.rp_balance - btcbot.rp_start
+        # bonus_session_change = btcbot.bonus - btcbot.bonus_start
+        rolls_session = btcbot.account.total_rolls - btcbot.rolls
+
+        btc_row = ['BTC', '%.8f' % btcbot.current_state.btc,
+            colorChange(btcbot.logger.month_change.btc_change, format='{:+.8f}'),
+            colorChange(btcbot.logger.week_change.btc_change, format='{:+.8f}'),
+            colorChange(btcbot.logger.day_change.btc_change, format='{:+.8f}'),
+            colorChange(btcbot.logger.session_change.btc_change, format='{:+.8f}'),
+            colorChange(btcbot.logger.last_change.btc_change, format='{:+.8f}')]
+
+        rp_row = ['RP', btcbot.current_state.rp,
+            colorChange(btcbot.logger.month_change.rp_change),
+            colorChange(btcbot.logger.week_change.rp_change),
+            colorChange(btcbot.logger.day_change.rp_change),
+            colorChange(btcbot.logger.session_change.rp_change),
+            colorChange(btcbot.logger.last_change.rp_change)]#,
+            # stylize(f'{btcbot.active_rp_bonus} for {btcbot.bonus_countdown//60//60}h', colored.fore.GREEN) if btcbot.active_rp_bonus else '']
+
+        bonus_row = ['Bônus%', '%.2f%%' % btcbot.current_state.bonus, 
+            colorChange(btcbot.logger.month_change.bonus_change, format='{:+.2f}%'),
+            colorChange(btcbot.logger.week_change.bonus_change, format='{:+.2f}%'),
+            colorChange(btcbot.logger.day_change.bonus_change, format='{:+.2f}%'),
+            colorChange(btcbot.logger.session_change.bonus_change, format='{:+.2f}%'),
+            colorChange(btcbot.logger.last_change.bonus_change, format='{:+.2f}%')]
+
+        rolls_row = ['Rolls', btcbot.account.total_rolls, "","","",
+            colorChange(rolls_session, format='{:+d}')]
+
+        info_detail = [
+            BTCBot.label_row,
+            btc_row,
+            rp_row,
+            bonus_row,
+            rolls_row,
+        ]
+    else:
+        account_info_row = [WS]
+        info_detail = [WS]*5
+
+    if(output != None):
+        if(len(output) > width):
+            output = output[:width]
+        if(overhide):
+            outputList[-1] = [output]
+        else:
+            outputList = (
+                outputList + [[output]])[-height:]
+
+    s = tabulate.tabulate([
+        [NAME],
+        [tabulate.tabulate(btc_info_row, tablefmt='presto')],
+        [tabulate.tabulate(account_info_row, tablefmt='presto')],
+        [tabulate.tabulate(info_detail, tablefmt='presto',
+                            colalign=("right",))],
+        [tabulate.tabulate(outputList[6:],
+                            tablefmt='plain')]],
+        tablefmt='fancy_grid')
+    if(clear):
+        print(f'\033[{height+8}A', end='')
+    print(s)
