@@ -86,9 +86,9 @@ def loadLogs():
 
 accounts = {}
 settings = {}
-DATA_FILE = 'data2.json'
+DATA_FILE = 'data.json'
 logs = {}
-LOGS_FILE = 'logs2.json'
+LOGS_FILE = 'logs.json'
 
 command = None
 
@@ -110,7 +110,7 @@ if __name__ == '__main__':
         description="""Script to automate rolls for FreeBitco.in """)
 
     command_parser = parser.add_subparsers(
-        title="command", help='action to perform')
+        title="command")#, help='action to perform')
 
     config = command_parser.add_parser(
         'config',
@@ -182,6 +182,7 @@ if __name__ == '__main__':
     if(not hasattr(args, 'action')):
         printScreen("Starting with default command 'run'")
         args.action = action.RUN
+        args.user_index = 1
     try:
         if args.action == action.RUN:
             if(not settings):
