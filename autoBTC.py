@@ -126,6 +126,8 @@ if __name__ == '__main__':
     run.add_argument('action', action='store_const', const=action.RUN)
     run.add_argument('-i', '--user-index', action='store', type=int, default=1,
                      help='Select user by index')
+    run.add_argument('-b', '--bonus-stop', action='store_true',
+                     help='Script waits for user input if there is no bonus active for the account')
 
     mode_run = run.add_subparsers(title='mode')
     mode_run.add_parser('auto', help='Fully automated').add_argument(
@@ -233,7 +235,14 @@ if __name__ == '__main__':
 
                     btcbot.updatePageData()  # fetch_rates=True)
 
-                    log = btcbot.rollSequence(args.mode)
+                    if(args.bonus_stop):
+                        if(not btcbot.active_rp_bonus):
+                            printScreen("Script paused")
+                            printScreen("No active bonus, press Enter to continue")
+                            input()
+                            print('\033[1A',end='')
+
+                    btcbot.rollSequence(args.mode)
                 except PageNotOpenException:
                     printScreen(
                         stylize('Page not opened', colored.fore.RED), btcbot)
@@ -357,36 +366,16 @@ if __name__ == '__main__':
         elif args.action == action.TEST:
             printScreen('Running test sequence')
 
-            # fd = open('data.json')
-            # settings2, accounts2 = json.load(fd).values()
-            # accounts2 = [Account(**acc) for acc in accounts2]
-            # settings2 = [Setting(res, tuple(settings2[res]['roll_position']), tuple(settings2[res]['captcha_position']))
-            #              for res in settings2]
-            # fd.close()
-            # for s in settings:
-            #     print(s)
-            # for a in accounts:
-            #     print(a)
-            # print(args)
-            # acc = accounts[args.user_index-1]
-            # # print(accounts[args.user_index-1])
-            # if not acc.id in logs:
-            #     logs[acc.id] = [
-            #         State(datetime.today().isoformat(), 0.0, 0, 1.0)]
-            # logger = Logger(acc, logs[acc.id])
-            # btcbot = BTCBot(acc, logger, setting)
-            # saveData()
-            # print(next(s for s in settings2 if s.resolution == 'as', ))
-            # print(json.dumps(settings, indent=1))
-            # print(json.dumps(accounts2, indent=1, cls=CustomEncoder))
-
-            # fd = open('logs.json')
-            # logs2 = json.load(fd)
-            # for id in logs2:
-            #     for log in logs2[id]:
-            #         logs[id].append(ChangeLog(log[0], log[1], log[3], log[5], log[2], log[4], log[6]))
-            # fd.close()
-            # saveLogs()
+            setting = next(
+                (s for s in settings if s.resolution == resolution), None)
+            acc = accounts[0]
+            # print(accounts[args.user_index-1])
+            if not acc.id in logs:
+                logs[acc.id] = [
+                    State(datetime.today().isoformat(), 0.0, 0, 1.0)]
+            logger = Logger(acc, logs[acc.id])
+            btcbot = BTCBot(acc, logger, setting)
+            print(btcbot.active_rp_bonus, btcbot.bonus_countdown)
 
     except ExitException as e:
         printScreen(f'Script ended {e}')
