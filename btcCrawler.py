@@ -13,6 +13,7 @@ import requests
 from datetime import datetime
 from random import random
 from colored import stylize
+from colored import fore, back, style, stylize, bg, fg
 import colored
 import tabulate
 
@@ -30,6 +31,9 @@ LOAD_TIME = 10
 outputList = [[WS]]*height
 
 
+def coloredTag(txt, color): return fg(color)+'▕'+style.RESET+style.BOLD + \
+    fore.WHITE+bg(color)+txt+style.RESET+fg(color)+'▎'+style.RESET
+
 
 def colorChange(value, base=0, format='{:+}'):
     if value > base:
@@ -42,7 +46,8 @@ def colorChange(value, base=0, format='{:+}'):
 
 class BTCBot():
 
-    label_row = ['', ' Current', '   Month', '    Week', '     Day', '  Session', '    Last']
+    label_row = ['', ' Current', '   Month',
+                 '    Week', '     Day', '  Session', '    Last']
 
     def __init__(self, acc: Account, logger: Logger, setting: Setting):
         self.account = acc
@@ -54,8 +59,8 @@ class BTCBot():
         # self.last_roll_timestamp = datetime.now()
 
         self.updatePageData()
-        self.logger.updateState(self.current_state)
-        
+        # self.logger.updateState(self.current_state)
+
         # self.btc_start = self.btc_last = self.btc_balance
         # self.rp_start = self.rp_last = self.rp_balance
         # self.bonus_start = self.bonus_last = self.bonus
@@ -66,7 +71,6 @@ class BTCBot():
             #                         acc.cookie, acc.total_rolls)
             self.account.id = self.account_id
             self.account.email = self.account_email
-
 
     def updatePageData(self):
 
@@ -87,7 +91,9 @@ class BTCBot():
         active_bonus = soup.select("span.free_play_bonus_box_span_large")
         # print(active_bonus)
         if len(active_bonus) == 4:
-            self.active_rp_bonus = active_bonus[0].text
+            l = active_bonus[0].text.split(' ')
+            if(l[-1] == "points"):
+                self.active_rp_bonus = f'+{l[0]}rp'
             s = soup.select_one("div#bonus_container_free_points").text
             self.bonus_countdown = int(s[s.rfind(',')+1:s.rfind(')})')])
         else:
@@ -95,7 +101,7 @@ class BTCBot():
             self.active_rp_bonus = None
         self.promotion = soup.select_one(
             '.free_play_bonus_box_span_large').text
-        
+
         btc_balance_str = soup.select_one('#balance_small').text
         btc_balance = float(btc_balance_str)
         satoshi_balance = int(btc_balance_str.replace('.', ''))
@@ -103,12 +109,13 @@ class BTCBot():
             '.user_reward_points').text.replace(',', ''))
         bonus = float(soup.select_one('#fp_bonus_req_completed').text)
 
-        self.current_state = State(update_timestamp.isoformat(), btc_balance, rp_balance, bonus)
+        self.current_state = State(
+            update_timestamp.isoformat(), btc_balance, rp_balance, bonus)
 
         # if(fetch_rates):
         #     BTCBot.updateBTCprice()
-        
-        # return 
+
+        # return
 
     # def setAccount(self, account: Account):
 
@@ -150,10 +157,10 @@ class BTCBot():
         return(Account(self.account.id, self.account.email, self.account.cookie, self.rolls))
 
     # @staticmethod
-    
 
     # @staticmethod
-    def focusOrOpenPage(self):
+
+    def focusPage(self):
 
         if(not BTCBot.isPageOpened()):
             return False
@@ -213,7 +220,7 @@ class BTCBot():
 
     def rollSequence(self, mode='auto'):
 
-        if(not self.focusOrOpenPage()):
+        if(not self.focusPage()):
             raise PageNotOpenException
 
         pyautogui.press('f5')
@@ -239,7 +246,7 @@ class BTCBot():
             else:
                 pyautogui.press('end')
                 printScreen('Attempting to click on roll at (%d, %d)' %
-                                 tuple(self.setting.roll_position), self)
+                            tuple(self.setting.roll_position), self)
                 pyautogui.moveTo(self.setting.roll_position)
                 time.sleep(random())
                 pyautogui.click()
@@ -249,12 +256,12 @@ class BTCBot():
         if(skiped or self.waitOrSkip(LOAD_TIME, 'game to roll')):
             self.updatePageData()
             # log = self.logChange()
-            change = self.logger.updateState(self.current_state)
+            # change = self.logger.updateState(self.current_state)
             pyautogui.keyDown('altleft')
             pyautogui.press('tab')
             pyautogui.keyUp('altleft')
 
-            if (not change):
+            if (not self.logger.didStateChange(self.current_state)):
                 raise GameNotReady
         else:
             raise GameFailException
@@ -284,7 +291,10 @@ class BTCBot():
             roll_time = datetime.strptime(output[4], '%Mm:%Ss')
             return roll_time.minute * 60 + roll_time.second
 
+
 brl_rate = usd_rate = 0
+
+
 def updateBTCprice():
     global brl_rate, brl_rate_last, usd_rate, usd_rate_last
     j = json.loads(requests.get(
@@ -294,7 +304,9 @@ def updateBTCprice():
     brl_rate = j['bpi']['BRL']['rate_float']
     usd_rate = j['bpi']['USD']['rate_float']
 
+
 updateBTCprice()
+
 
 def printScreen(output=None, btcbot: BTCBot = None, clear=True, overhide=False):
     global outputList
@@ -304,37 +316,57 @@ def printScreen(output=None, btcbot: BTCBot = None, clear=True, overhide=False):
 
     if(btcbot):
         account_info_row = [['Account', btcbot.account.email,
-                                'Last updated', datetime.fromisoformat(btcbot.current_state.timestamp).strftime('%H:%M:%S %d-%m-%y')]]
+                             'Last updated', datetime.fromisoformat(btcbot.current_state.timestamp).strftime('%H:%M:%S %d-%m-%y')]]
 
+        tags_row = [WS]  # [[coloredTag(tag, 'green') for tag in tags]]
         # btc_session_change = btcbot.btc_balance - btcbot.btc_start
         # rp_session_change = btcbot.rp_balance - btcbot.rp_start
         # bonus_session_change = btcbot.bonus - btcbot.bonus_start
         rolls_session = btcbot.account.total_rolls - btcbot.rolls
 
         btc_row = ['BTC', '%.8f' % btcbot.current_state.btc,
-            colorChange(btcbot.logger.month_change.btc_change, format='{:+.8f}'),
-            colorChange(btcbot.logger.week_change.btc_change, format='{:+.8f}'),
-            colorChange(btcbot.logger.day_change.btc_change, format='{:+.8f}'),
-            colorChange(btcbot.logger.session_change.btc_change, format='{:+.8f}'),
-            colorChange(btcbot.logger.last_change.btc_change, format='{:+.8f}')]
+                   colorChange(btcbot.logger.month_change.btc_change,
+                               format='{:+.8f}'),
+                   colorChange(btcbot.logger.week_change.btc_change,
+                               format='{:+.8f}'),
+                   colorChange(btcbot.logger.day_change.btc_change,
+                               format='{:+.8f}'),
+                   colorChange(
+                       btcbot.logger.session_change.btc_change, format='{:+.8f}'),
+                   colorChange(btcbot.logger.last_change.btc_change, format='{:+.8f}')]
 
         rp_row = ['RP', btcbot.current_state.rp,
-            colorChange(btcbot.logger.month_change.rp_change),
-            colorChange(btcbot.logger.week_change.rp_change),
-            colorChange(btcbot.logger.day_change.rp_change),
-            colorChange(btcbot.logger.session_change.rp_change),
-            colorChange(btcbot.logger.last_change.rp_change)]#,
-            # stylize(f'{btcbot.active_rp_bonus} for {btcbot.bonus_countdown//60//60}h', colored.fore.GREEN) if btcbot.active_rp_bonus else '']
+                  colorChange(btcbot.logger.month_change.rp_change),
+                  colorChange(btcbot.logger.week_change.rp_change),
+                  colorChange(btcbot.logger.day_change.rp_change),
+                  colorChange(btcbot.logger.session_change.rp_change),
+                  colorChange(btcbot.logger.last_change.rp_change)]  # ,
+        # stylize(f'{btcbot.active_rp_bonus} for {btcbot.bonus_countdown//60//60}h', colored.fore.GREEN) if btcbot.active_rp_bonus else '']
 
-        bonus_row = ['Bônus%', '%.2f%%' % btcbot.current_state.bonus, 
-            colorChange(btcbot.logger.month_change.bonus_change, format='{:+.2f}%'),
-            colorChange(btcbot.logger.week_change.bonus_change, format='{:+.2f}%'),
-            colorChange(btcbot.logger.day_change.bonus_change, format='{:+.2f}%'),
-            colorChange(btcbot.logger.session_change.bonus_change, format='{:+.2f}%'),
-            colorChange(btcbot.logger.last_change.bonus_change, format='{:+.2f}%')]
+        bonus_row = [
+            'Bônus%',
+            '%.2f%%' % btcbot.current_state.bonus,
+            colorChange(btcbot.logger.month_change.bonus_change,
+                        format='{:+.2f}%'),
+            colorChange(btcbot.logger.week_change.bonus_change,
+                        format='{:+.2f}%'),
+            colorChange(btcbot.logger.day_change.bonus_change,
+                        format='{:+.2f}%'),
+            colorChange(btcbot.logger.session_change.bonus_change,
+                        format='{:+.2f}%'),
+            colorChange(btcbot.logger.last_change.bonus_change,
+                        format='{:+.2f}%')
+        ]
 
-        rolls_row = ['Rolls', btcbot.account.total_rolls, "","","",
-            colorChange(rolls_session, format='{:+d}')]
+        rolls_row = [
+            'Logs',
+            len(btcbot.logger.logs),
+            # btcbot.account.total_rolls,
+            btcbot.logger.month_log_count,
+            btcbot.logger.week_log_count,
+            btcbot.logger.day_log_count,
+            colorChange(rolls_session, format='{:+d}')
+        ]
 
         info_detail = [
             BTCBot.label_row,
@@ -345,6 +377,7 @@ def printScreen(output=None, btcbot: BTCBot = None, clear=True, overhide=False):
         ]
     else:
         account_info_row = [WS]
+        tags_row = [WS]
         info_detail = [WS]*5
 
     if(output != None):
@@ -360,10 +393,11 @@ def printScreen(output=None, btcbot: BTCBot = None, clear=True, overhide=False):
         [NAME],
         [tabulate.tabulate(btc_info_row, tablefmt='presto')],
         [tabulate.tabulate(account_info_row, tablefmt='presto')],
+        # [tabulate.tabulate(tags_row, tablefmt='plain')],
         [tabulate.tabulate(info_detail, tablefmt='presto',
-                            colalign=("right",))],
+                           colalign=("right",))],
         [tabulate.tabulate(outputList[6:],
-                            tablefmt='plain')]],
+                           tablefmt='plain')]],
         tablefmt='fancy_grid')
     if(clear):
         print(f'\033[{height+8}A', end='')

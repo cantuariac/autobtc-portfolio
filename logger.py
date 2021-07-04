@@ -16,7 +16,8 @@ from colored import stylize
 import colored
 import tabulate
 
-from mytypes import * 
+from mytypes import *
+
 
 class Logger():
 
@@ -40,7 +41,7 @@ class Logger():
         self.week_change = self.week_first_state - state
         self.month_change = self.month_first_state - state
         self.updateState(state)
-    
+
     def setStartStates(self):
         today = datetime.today().date().isoformat()
         week = datetime.today().strftime('%Y-%U')
@@ -61,18 +62,30 @@ class Logger():
         self.week_first_state = State(*self.logs[fst_week][:4])
         self.month_first_state = State(*self.logs[fst_month][:4])
 
+        n = len(self.logs)
+        self.day_log_count = n-fst_today
+        self.week_log_count = n-fst_week
+        self.month_log_count = n-fst_month
+
+    def didStateChange(self, state: State):
+        return ((self.last_state.btc != state.btc) |
+                (self.last_state.rp != state.rp) |
+                (self.last_state.bonus != state.bonus))
+
     def updateState(self, state: State):
         if(datetime.today().date().isoformat() > self.init_day):
             self.setStartStates()
-        if ((self.last_state.btc != state.btc) |
-            (self.last_state.rp != state.rp) |
-            (self.last_state.bonus != state.bonus)):
+        if (self.didStateChange(state)):
 
             self.last_change = self.last_state - state
             self.session_change = self.session_first_state - state
             self.day_change = self.day_first_state - state
             self.week_change = self.week_first_state - state
             self.month_change = self.month_first_state - state
+
+            self.day_log_count += 1
+            self.week_log_count += 1
+            self.month_log_count += 1
 
             self.last_state = state
             self.logs.append(self.last_change)

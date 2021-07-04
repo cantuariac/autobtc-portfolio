@@ -185,6 +185,7 @@ if __name__ == '__main__':
         printScreen("Starting with default command 'run'")
         args.action = action.RUN
         args.user_index = 1
+    tags = []
     try:
         if args.action == action.RUN:
             if(not settings):
@@ -198,6 +199,7 @@ if __name__ == '__main__':
                 printScreen(
                     stylize('Click positions not configured for resolution '+resolution, colored.fore.RED))
                 raise ExitException
+            tags.append(setting.resolution)
 
             if(not accounts):
                 printScreen(
@@ -216,29 +218,42 @@ if __name__ == '__main__':
 
             if(not hasattr(args, 'mode')):
                 args.mode = action.AUTO
+            tags.append(args.mode)
 
             printScreen(
                 f"Running on {args.mode} mode, {resolution} resolution for user {btcbot.account.email}")
             # printScreen("User(id={id}, email={email}, total_rolls={total_rolls} loaded".format(**btc.user._asdict()))
             # printScreen(f'{btc.user} loaded')
 
+            btcbot.updatePageData()  # fetch_rates=True)
+            if (logger.updateState(btcbot.current_state)):
+                saveLogs()
+                printScreen('Unknown change logged', btcbot, tags)
+            
             consecutive_errors = 0
             while(True):
                 try:
+                    
+                    # tags2 = tags + [btcbot.active_rp_bonus] if btcbot.active_rp_bonus else []
+                    tags2=[]
+
+                    btcbot.wait(BTCBot.checkRollTime(),
+                                'for next roll')
+                    # if(btcbot.active_rp_bonus):
+                    # tags2 = tags + [btcbot.active_rp_bonus] if btcbot.active_rp_bonus else []
+                    # print(tags2, '\n')
                     btcbot.updatePageData()  # fetch_rates=True)
                     if (logger.updateState(btcbot.current_state)):
                         saveLogs()
                         printScreen('Unknown change logged', btcbot)
-                    
-                    btcbot.wait(BTCBot.checkRollTime(),
-                                'for next roll')
-
-                    btcbot.updatePageData()  # fetch_rates=True)
 
                     if(args.bonus_stop):
                         if(not btcbot.active_rp_bonus):
-                            printScreen("Script paused")
-                            printScreen("No active bonus, press Enter to continue")
+
+                            if(not btcbot.focusPage()):
+                                raise PageNotOpenException
+                            printScreen("Script paused", btcbot)
+                            printScreen("No active bonus, press Enter to continue", btcbot)
                             input()
                             print('\033[1A',end='')
 
@@ -268,7 +283,7 @@ if __name__ == '__main__':
                     printScreen(stylize('Game roll successful at ' + datetime.fromisoformat(
                         btcbot.current_state.timestamp).strftime('%H:%M:%S'), colored.fore.GREEN), btcbot)
 
-                    # accounts[args.user_index - 1] = btc.increaseAccountRoll()
+                    logger.updateState(btcbot.current_state)
                     btcbot.account.total_rolls += 1
                     # if btc.account.id in logs:
                     #     logs[btc.account.id].append(log)
