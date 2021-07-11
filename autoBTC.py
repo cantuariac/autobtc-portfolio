@@ -71,7 +71,8 @@ def loadData():
     fd = open(DATA_FILE)
     settings, accounts = json.load(fd).values()
     accounts = [Account(**acc) for acc in accounts]
-    settings = [Setting(sett['resolution'], tuple(sett['roll_position']), tuple(sett['captcha_position'])) for sett in settings]
+    settings = [Setting(sett['resolution'], tuple(sett['roll_position']), tuple(
+        sett['captcha_position'])) for sett in settings]
     fd.close()
 
 
@@ -110,7 +111,7 @@ if __name__ == '__main__':
         description="""Script to automate rolls for FreeBitco.in """)
 
     command_parser = parser.add_subparsers(
-        title="command")#, help='action to perform')
+        title="command")  # , help='action to perform')
 
     config = command_parser.add_parser(
         'config',
@@ -124,10 +125,10 @@ if __name__ == '__main__':
         'run',
         help="Run script with current configurations")
     run.add_argument('action', action='store_const', const=action.RUN)
-    run.add_argument('-i', '--user-index', action='store', type=int, default=1,
-                     help='Select user by index')
-    run.add_argument('-b', '--bonus-stop', action='store_true',
-                     help='Script waits for user input if there is no bonus active for the account')
+    parser.add_argument('-i', '--user-index', action='store', type=int, default=1,
+                        help='Select user by index')
+    parser.add_argument('-b', '--bonus-stop', action='store_true',
+                        help='Script waits for user input if there is no bonus active for the account')
 
     mode_run = run.add_subparsers(title='mode')
     mode_run.add_parser('auto', help='Fully automated').add_argument(
@@ -147,8 +148,12 @@ if __name__ == '__main__':
                                        help="Show a report from saved data")
     report.add_argument(
         'action', action='store_const', const=action.REPORT)
-    report.add_argument('-i', '--user-index', action='store', type=int, default=1,
-                     help='Select user by index')
+    # report.add_argument('-i', '--user-index', action='store', type=int, default=1,
+    #                  help='Select user by index')
+
+    type_report = report.add_subparsers(title='type')
+    type_report.add_parser('csv').add_argument(
+        'type', action='store_const', const='csv')
 
     test = command_parser.add_parser('test',
                                      help="test script")
@@ -162,8 +167,6 @@ if __name__ == '__main__':
         'xrandr | grep current').split(',')[1][9:]
 
     printScreen(clear=False)
-
-    # print(args)
 
     if(os.path.isfile(DATA_FILE)):
         loadData()
@@ -184,7 +187,8 @@ if __name__ == '__main__':
     if(not hasattr(args, 'action')):
         printScreen("Starting with default command 'run'")
         args.action = action.RUN
-        args.user_index = 1
+        # args.user_index = 1
+    printScreen(str(args))
     tags = []
     try:
         if args.action == action.RUN:
@@ -192,7 +196,7 @@ if __name__ == '__main__':
                 printScreen(
                     stylize('Click positions not configured', colored.fore.RED))
                 raise ExitException
-            
+
             setting = next(
                 (s for s in settings if s.resolution == resolution), None)
             if(not setting):
@@ -229,13 +233,13 @@ if __name__ == '__main__':
             if (logger.updateState(btcbot.current_state)):
                 saveLogs()
                 printScreen('Unknown change logged', btcbot, tags)
-            
+
             consecutive_errors = 0
             while(True):
                 try:
-                    
+
                     # tags2 = tags + [btcbot.active_rp_bonus] if btcbot.active_rp_bonus else []
-                    tags2=[]
+                    tags2 = []
 
                     btcbot.wait(BTCBot.checkRollTime(),
                                 'for next roll')
@@ -253,9 +257,10 @@ if __name__ == '__main__':
                             if(not btcbot.focusPage()):
                                 raise PageNotOpenException
                             printScreen("Script paused", btcbot)
-                            printScreen("No active bonus, press Enter to continue", btcbot)
+                            printScreen(
+                                "No active bonus, press Enter to continue", btcbot)
                             input()
-                            print('\033[1A',end='')
+                            print('\033[1A', end='')
 
                     btcbot.rollSequence(args.mode)
                 except PageNotOpenException:
@@ -334,7 +339,7 @@ if __name__ == '__main__':
 
             sett_i = next((i for i, s in enumerate(settings)
                            if s.resolution == resolution), None)
-            if(sett_i!=None):
+            if(sett_i != None):
                 printScreen(f'Updating setting {settings[sett_i].resolution}')
                 settings[sett_i] = Setting(
                     resolution, roll_position, captcha_position)
@@ -365,7 +370,7 @@ if __name__ == '__main__':
                 printScreen("No user accounts saved")
 
         elif args.action == action.REPORT:
-            
+
             # print(args)
             printScreen("Generating log report")
             setting = next(
@@ -375,9 +380,16 @@ if __name__ == '__main__':
             if not acc.id in logs:
                 logs[acc.id] = [
                     State(datetime.today().isoformat(), 0.0, 0, 1.0)]
-            logger = Logger(acc, logs[acc.id])
-            btcbot = BTCBot(acc, logger, setting)
-            printScreen("Report loaded", btcbot)
+            if(args.type=='csv'):
+                f = open(f'logs{acc.id}.csv', 'w')
+                for log in logs[acc.id]:
+                    f.write('%s, %.8f, %d, %.2f, %.8f, %d, %.2f\n'%log)
+                printScreen(f"Report saved on \'logs{acc.id}.csv\'")
+                f.close()
+            else:
+                logger = Logger(acc, logs[acc.id])
+                btcbot = BTCBot(acc, logger, setting)
+                printScreen("Report loaded", btcbot)
         elif args.action == action.TEST:
             printScreen('Running test sequence')
 
