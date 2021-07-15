@@ -45,6 +45,16 @@ def colorChange(value, base=0, format='{:+}'):
 
 
 class BTCBot():
+    """[summary]
+
+    Raises:
+        PageNotOpenException: [description]
+        GameNotReady: [description]
+        GameFailException: [description]
+
+    Returns:
+        [type]: [description]
+    """
 
     label_row = ['', ' Current', '   Month',
                  '    Week', '     Day', '  Session', '    Last']
@@ -71,8 +81,10 @@ class BTCBot():
             #                         acc.cookie, acc.total_rolls)
             self.account.id = self.account_id
             self.account.email = self.account_email
-
+        
     def updatePageData(self):
+        """Fetch data from user from html and update attributes
+        """
 
         session = requests.Session()
         response = session.get('https://freebitco.in', headers={
@@ -88,17 +100,17 @@ class BTCBot():
         self.account_email = soup.select_one(
             '#edit_profile_form_email').attrs['value']
 
-        active_bonus = soup.select("span.free_play_bonus_box_span_large")
+        self.active_rp_bonus = soup.select("span.free_play_bonus_box_span_large")
         # print(active_bonus)
-        if len(active_bonus) == 4:
-            l = active_bonus[0].text.split(' ')
-            if(l[-1] == "points"):
-                self.active_rp_bonus = f'+{l[0]}rp'
-            s = soup.select_one("div#bonus_container_free_points").text
-            self.bonus_countdown = int(s[s.rfind(',')+1:s.rfind(')})')])
-        else:
-            self.bonus_countdown = 0
-            self.active_rp_bonus = None
+        # if len(active_bonus) == 4:
+        #     l = active_bonus[0].text.split(' ')
+        #     if(l[-1] == "points"):
+        #         self.active_rp_bonus = f'+{l[0]}rp'
+        #     s = soup.select_one("div#bonus_container_free_points").text
+        #     self.bonus_countdown = int(s[s.rfind(',')+1:s.rfind(')})')])
+        # else:
+        self.bonus_countdown = 0
+        # self.active_rp_bonus = None
         self.promotion = soup.select_one(
             '.free_play_bonus_box_span_large').text
 

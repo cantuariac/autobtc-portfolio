@@ -6,6 +6,8 @@ from typing import NamedTuple
 import os
 import sys
 import time
+from matplotlib.pyplot import plot
+from numpy import fromstring
 import pyautogui
 import json
 from datetime import datetime
@@ -102,6 +104,8 @@ class action:
     TEST = 'test'
     AUTO = 'auto'
     MANUAL = 'manual'
+    CSV = 'csv'
+    PLOT = 'plot'
 
 
 if __name__ == '__main__':
@@ -154,6 +158,8 @@ if __name__ == '__main__':
     type_report = report.add_subparsers(title='type')
     type_report.add_parser('csv').add_argument(
         'type', action='store_const', const='csv')
+    type_report.add_parser(action.PLOT).add_argument(
+        'type', action='store_const', const=action.PLOT)
 
     test = command_parser.add_parser('test',
                                      help="test script")
@@ -268,12 +274,12 @@ if __name__ == '__main__':
                         stylize('Page not opened', colored.fore.RED), btcbot)
                     printScreen('Waiting for user to open page', btcbot)
                     time.sleep(LOAD_TIME)
-                    consecutive_errors += 1
+                    consecutive_errors += 0.2
                     printScreen('Reloading page and trying again', btcbot)
                 except GameNotReady:
                     printScreen(
                         stylize('Game not ready', colored.fore.RED), btcbot)
-                    consecutive_errors += 1
+                    # consecutive_errors += 1
                 except GameFailException:
                     printScreen(
                         stylize('Game roll failed', colored.fore.RED), btcbot)
@@ -282,8 +288,10 @@ if __name__ == '__main__':
                 except Exception as error:
                     printScreen(
                         stylize(f'Unknown error:{error}', colored.fore.RED), btcbot)
-                    print(error.with_traceback())
-                    raise ExitException
+                    consecutive_errors += 1
+                    printScreen('Reloading page and trying again')
+                    # print(error.with_traceback())
+                    # raise ExitException
                 else:
                     printScreen(stylize('Game roll successful at ' + datetime.fromisoformat(
                         btcbot.current_state.timestamp).strftime('%H:%M:%S'), colored.fore.GREEN), btcbot)
@@ -386,6 +394,15 @@ if __name__ == '__main__':
                     f.write('%s, %.8f, %d, %.2f, %.8f, %d, %.2f\n'%log)
                 printScreen(f"Report saved on \'logs{acc.id}.csv\'")
                 f.close()
+            if(args.type=='plot'):
+                import numpy as np
+                import matplotlib.pyplot as plt
+                timestamps = [datetime.fromisoformat(l[0]) for l in logs[acc.id]]
+                values = [l[2] for l in logs[acc.id]]
+                # print(data)
+                plt.plot(timestamps, values)
+                plt.gcf().autofmt_xdate()
+                plt.show()
             else:
                 logger = Logger(acc, logs[acc.id])
                 btcbot = BTCBot(acc, logger, setting)
