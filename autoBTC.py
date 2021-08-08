@@ -1,260 +1,427 @@
 #!/usr/bin/python3
-# -*- coding: iso-8859-1 -*-
+# -*- coding: utf-8 -*-
 
 import argparse
+from typing import NamedTuple
 import os
 import sys
 import time
+from matplotlib.pyplot import plot
+from numpy import fromstring
 import pyautogui
-import subprocess
 import json
 from datetime import datetime
 from random import random
 from colored import stylize
 import colored
-from collections import namedtuple
-from dataclasses import dataclass
+# from tabulate import tabulate
+import tabulate
+import threading
 
-from bs4 import BeautifulSoup
+from mytypes import *
+from logger import *
+from btcCrawler import *
 
-fore = colored.fore()
+tabulate.PRESERVE_WHITESPACE = True
 
-SavedData = namedtuple('SavedData', ['captcha_position', 'roll_position', 'load_time', 'logs'])
-# Log = namedtuple('Log', ['timestamp', 'rp_balance', 'btc_balance', 'rp_gained', 'btc_gained'])
 
-@dataclass
-class Log:
-    timestamp : str
-    rp_balance : int
-    btc_balance : int
-    rp_gained : int
-    btc_gained : int
+def userInput():
+    global command
+    while True:
+        command = input('> ')
+        if(command == 'q'):
+            break
 
-def isPageOpened():
-    return subprocess.getoutput('wmctrl -lp | grep FreeBitco.in') != ''
 
-def focusOrOpenPage():
+class CustomEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Account):
+            return obj.__dict__
+        return json.JSONEncoder.default(obj)
 
-    if(not isPageOpened()):
-        os.system('firefox --new-window https://freebitco.in &')
-        print('Waiting for browser to open')
-        while(not isPageOpened()):
-            time.sleep(1)
-        time.sleep(load_time)
-    else:
-        os.system('wmctrl -a FreeBitco.in')
-        time.sleep(1)
-        pyautogui.press('f5')
-        print('Waiting for page to load')
-        time.sleep(load_time)
-    
-    print('freebitco.in page is ready')
 
-def checkRollTime():
-    output = subprocess.getoutput('wmctrl -lp | grep FreeBitco.in').split()
-    if not output:
-        return
+class ExitException(Exception):
+    pass
 
-    # win_code = output[0]
-    # pid = int(output[2])
-    if output[4] == 'FreeBitco.in':
-        return 0
-    else:
-        roll_time = datetime.strptime(output[4], '%Mm:%Ss')
-        return roll_time.minute * 60 + roll_time.second
-
-def parsePage():
-    focusOrOpenPage()
-    
-    pyautogui.hotkey('ctrl', 'u')
-    time.sleep(0.5)
-
-    pyautogui.press('f5')
-    time.sleep(5)
-    
-    pyautogui.hotkey('ctrl', 'a')
-    time.sleep(0.5)
-
-    pyautogui.hotkey('ctrl', 'c')
-    time.sleep(0.5)
-
-    pyautogui.hotkey('ctrl', 'w')
-    time.sleep(0.5)
-
-    # pyautogui.hotkey('alt', 'tab')
-
-    html = subprocess.getoutput('xclip -o')
-    soup = BeautifulSoup(html, 'html.parser')
-    balance = round(float(soup.select_one('#balance_small').text)*100000000)
-    RP = int(soup.select_one('.user_reward_points').text.replace(',', ''))
-    user_id = soup.select_one('span.left:nth-child(2)').text
-
-    return user_id, RP, balance
-
-captcha_position = None
-roll_position = None
-load_time = 10
-logs = {}
 
 def saveData():
-    fd = open('saved_data.json', 'w')
-    json.dump(SavedData(captcha_position, roll_position, load_time, logs)._asdict(), fd, indent=2)
+    global settings, accounts
+    # accounts = [acc._asdict() for acc in accounts]
+    # settings = {res:(settings[res]._asdict()) for res in settings}
+
+    fd = open(DATA_FILE, 'w')
+    json.dump({
+        'settings': [s._asdict() for s in settings],
+        'accounts': [acc.__dict__ for acc in accounts],
+    }, fd, indent=2)
     fd.close()
 
-def wait(seconds, what_for=''):
-    print('Waiting %d minutes'%(seconds//60+1), what_for, ' ', flush=True, end='')
-    time.sleep(seconds%60)
-    print('\r', end='')
-    seconds -= (seconds%60)
-    while(seconds>60):
-        print('Waiting %d minutes'%(seconds//60), what_for, ' ', flush=True, end='')
-        time.sleep(60)
-        print('\r', end='')
-        seconds -= 60
-    while(seconds):
-        print('Waiting %d seconds'%(seconds%60), what_for, ' ', flush=True,  end='')
-        time.sleep(1)
-        print('\r', end='')
-        seconds -= 1
-    print('Ready', what_for, ' '*20)
 
-if __name__ == "__main__":
+def saveLogs():
+    global logs
+    s = json.dumps(logs, indent=2)
+    s = s.replace('\n      ', ' ')
+    s = s.replace('\n    ],', ' ],')
+    s = s.replace('\n    ]', ' ]')
+    fd = open(LOGS_FILE, 'w')
+    fd.write(s)
+    fd.close()
+
+
+def loadData():
+    global settings, accounts
+    fd = open(DATA_FILE)
+    settings, accounts = json.load(fd).values()
+    accounts = [Account(**acc) for acc in accounts]
+    settings = [Setting(sett['resolution'], tuple(sett['roll_position']), tuple(
+        sett['captcha_position'])) for sett in settings]
+    fd.close()
+
+
+def loadLogs():
+    global logs
+    fd = open(LOGS_FILE)
+    logs = json.load(fd)
+    for id in logs:
+        logs[id] = [ChangeLog(*log) for log in logs[id]]
+    fd.close()
+
+
+accounts = {}
+settings = {}
+DATA_FILE = 'data.json'
+logs = {}
+LOGS_FILE = 'logs.json'
+
+command = None
+
+
+class action:
+    CONFIG = 'config'
+    RUN = 'run'
+    REPORT = 'report'
+    USERS = 'users'
+    TEST = 'test'
+    AUTO = 'auto'
+    MANUAL = 'manual'
+    CSV = 'csv'
+    PLOT = 'plot'
+
+
+if __name__ == '__main__':
+
     parser = argparse.ArgumentParser(
-                description="""Script to automate rolls for FreeBitco.in """)
-    
-    commandGroup = parser.add_argument_group('actions')
-    commandGroup.add_argument('-l',"-logs",  action='store_true', dest='logs',
-        help="Show logs and exit")
-    commandGroup.add_argument('-s',"-set",  action='store_true', dest='set',
+        prog='autoBTC.py',
+        description="""Script to automate rolls for FreeBitco.in """)
+
+    command_parser = parser.add_subparsers(
+        title="command")  # , help='action to perform')
+
+    config = command_parser.add_parser(
+        'config',
         help="Set click positions for CAPTCHA checkbox and ROLL button")
-    commandGroup.add_argument('-r', "-run",  action='store_true', dest='run',
+    config.add_argument(
+        'action', action='store_const', const=action.CONFIG)
+    config.add_argument('-l', '--list', action='store_true',
+                        help='List saved settings')
+
+    run = command_parser.add_parser(
+        'run',
         help="Run script with current configurations")
-                                    
+    run.add_argument('action', action='store_const', const=action.RUN)
+    parser.add_argument('-i', '--user-index', action='store', type=int, default=1,
+                        help='Select user by index')
+    parser.add_argument('-b', '--bonus-stop', action='store_true',
+                        help='Script waits for user input if there is no bonus active for the account')
+
+    mode_run = run.add_subparsers(title='mode')
+    mode_run.add_parser('auto', help='Fully automated').add_argument(
+        'mode', action='store_const', const=action.AUTO)
+    mode_run.add_parser('manual', help='Semi automated, user clicks capachas and buttons').add_argument(
+        'mode', action='store_const', const=action.MANUAL)
+
+    users = command_parser.add_parser(
+        'users',
+        help="List saved users")
+    users.add_argument(
+        'action', action='store_const', const=action.USERS)
+    users.add_argument('-c', '--create-user', action='store', type=str, dest='cookie',
+                       help='Create user from cookie string')
+
+    report = command_parser.add_parser('report',
+                                       help="Show a report from saved data")
+    report.add_argument(
+        'action', action='store_const', const=action.REPORT)
+    # report.add_argument('-i', '--user-index', action='store', type=int, default=1,
+    #                  help='Select user by index')
+
+    type_report = report.add_subparsers(title='type')
+    type_report.add_parser('csv').add_argument(
+        'type', action='store_const', const='csv')
+    type_report.add_parser(action.PLOT).add_argument(
+        'type', action='store_const', const=action.PLOT)
+
+    test = command_parser.add_parser('test',
+                                     help="test script")
+    test.add_argument(
+        'action', action='store_const', const=action.TEST)
+
     args = parser.parse_args()
-    print(args)
+    # print(args); exit()
+    # btc = BTCBot()
+    resolution = subprocess.getoutput(
+        'xrandr | grep current').split(',')[1][9:]
 
-    if(os.path.isfile('saved_data.json')):
-        fd = open('saved_data.json')
-        captcha_position, roll_position, load_time, logs = SavedData(**json.load(fd))
-        fd.close()
-        print('\'saved_data.json\' file loaded')
+    printScreen(clear=False)
 
+    if(os.path.isfile(DATA_FILE)):
+        loadData()
+        printScreen(f'Data file loaded')
     else:
-        print('Saved data file not found')
-        # data = SavedData(None, None, 10, {})
-        # fd = open('saved_data.json', 'w')
-        # json.dump(SavedData(None, None, 10, {})._asdict(), fd, indent=2)
-        # fd.close()
-        captcha_position = None
-        roll_position = None
-        load_time = 10
-        logs = {}
+        printScreen('Saved data file not found')
         saveData()
-        print('\'saved_data.json\' file created')
+        printScreen(f'Data file created')
 
-    print()
+    if(os.path.isfile(LOGS_FILE)):
+        loadLogs()
+        printScreen(f'Logs file loaded')
+    else:
+        printScreen('Logs file not found')
+        saveLogs()
+        printScreen(f'Logs file created')
+
+    if(not hasattr(args, 'action')):
+        printScreen("Starting with default command 'run'")
+        args.action = action.RUN
+        # args.user_index = 1
+    printScreen(str(args))
+    tags = []
     try:
-        if(args.logs):
-            for user in logs:
-                print(user)
-                for log in logs[user]:
-                    pass
-                    # timestamp, RP, balance = log
-                    # log[0] = datetime.fromtimestamp(log[0]).isoformat()
+        if args.action == action.RUN:
+            if(not settings):
+                printScreen(
+                    stylize('Click positions not configured', colored.fore.RED))
+                raise ExitException
 
-            saveData()
-            exit()
-        
-        # openOrFocusPage()
+            setting = next(
+                (s for s in settings if s.resolution == resolution), None)
+            if(not setting):
+                printScreen(
+                    stylize('Click positions not configured for resolution '+resolution, colored.fore.RED))
+                raise ExitException
+            tags.append(setting.resolution)
 
-        print('Checking current balance')
-        user, last_rp, last_balance = parsePage()
-        pyautogui.keyDown('altleft'); pyautogui.press('tab'); pyautogui.keyUp('altleft')
+            if(not accounts):
+                printScreen(
+                    stylize('No accounts saved', colored.fore.RED))
+                raise ExitException
 
-        roll_wait = checkRollTime()
-        if(roll_wait):
-            wait(roll_wait, 'for next roll')
-        
-        if(args.set):
-            focusOrOpenPage()
+            # btc.setting = settings[resolution]
+            acc = accounts[args.user_index-1]
+            # print(accounts[args.user_index-1])
+            if not acc.id in logs:
+                logs[acc.id] = [
+                    State(datetime.today().isoformat(), 0.0, 0, 1.0)]
+            logger = Logger(acc, logs[acc.id])
+            btcbot = BTCBot(acc, logger, setting)
+            # btc.setAccount(accounts[args.user_index-1])
 
-            print('Setting click positions')
+            if(not hasattr(args, 'mode')):
+                args.mode = action.AUTO
+            tags.append(args.mode)
 
-            for i in range(load_time*10, 0, -1):
-                current = pyautogui.position()
-                print('Mouse over CAPTCHA checkbox position and wait %f seconds (%d, %d)'
-                    %(i/10, current.x, current.y), end='', flush=True)
-                time.sleep(0.1)
-                print('\r', end='')
-            captcha_position = pyautogui.position()
-            print('CAPTCHA position set at (%d, %d)'%captcha_position, ' '*20)
-            
-            for i in range(load_time*10, 0, -1):
-                current = pyautogui.position()
-                print('Mouse over ROLL button position and wait %f seconds (%d, %d)'
-                    %(i/10, current.x, current.y), end='', flush=True)
-                time.sleep(0.1)
-                print('\r', end='')
-            roll_position = pyautogui.position()
-            print('ROLL position set at (%d, %d)'%roll_position, ' '*20)
+            printScreen(
+                f"Running on {args.mode} mode, {resolution} resolution for user {btcbot.account.email}")
+            # printScreen("User(id={id}, email={email}, total_rolls={total_rolls} loaded".format(**btc.user._asdict()))
+            # printScreen(f'{btc.user} loaded')
 
-            # fd = open('saved_data.json', 'w')
-            # json.dump(SavedData(captcha_position, roll_position, load_time, logs)._asdict(), fd, indent=2)
-            # fd.close()
-            saveData()
-            print('Settings saved')
+            btcbot.updatePageData()  # fetch_rates=True)
+            if (logger.updateState(btcbot.current_state)):
+                saveLogs()
+                printScreen('Unknown change logged', btcbot, tags)
 
-        # print('Starting roll loop')
-
-        if(args.run):
+            consecutive_errors = 0
             while(True):
+                try:
 
-                focusOrOpenPage()
-                pyautogui.press('end')
-                time.sleep(1)
+                    # tags2 = tags + [btcbot.active_rp_bonus] if btcbot.active_rp_bonus else []
+                    tags2 = []
 
-                print('Attempting to click on CAPTCHA at', tuple(captcha_position))
-                pyautogui.moveTo(captcha_position)
-                time.sleep(random())
-                pyautogui.click()
-                print('Waiting for captcha to solve...')
-                time.sleep(load_time*(1+random()))
+                    btcbot.wait(BTCBot.checkRollTime(),
+                                'for next roll')
+                    # if(btcbot.active_rp_bonus):
+                    # tags2 = tags + [btcbot.active_rp_bonus] if btcbot.active_rp_bonus else []
+                    # print(tags2, '\n')
+                    btcbot.updatePageData()  # fetch_rates=True)
+                    if (logger.updateState(btcbot.current_state)):
+                        saveLogs()
+                        printScreen('Unknown change logged', btcbot)
 
-                print('Attempting to click on roll at', tuple(roll_position))
-                pyautogui.moveTo(roll_position)
-                time.sleep(random())
-                pyautogui.click()
-                print('Waiting for game to roll...')
-                roll_timestamp = datetime.now()
-                time.sleep(load_time*(1+random()))
+                    if(args.bonus_stop):
+                        if(not btcbot.active_rp_bonus):
 
-                roll_wait = checkRollTime()
-                
-                if(roll_wait):
-                    user, rp, balance = parsePage()
-                    print(stylize('Game roll successful at %s, %d satoshi and %d RP earned'%
-                                (roll_timestamp.strftime('%H:%M:%S'), balance-last_balance, rp-last_rp),
-                                fore.GREEN))
-                    print('BTC balance: %d\tRP balance: %d'%(balance, rp))
-                    #pyautogui.press('f5')
-                    #time.sleep(load_time)
-                    if user not in logs:
-                        logs[user] = []
-                    logs[user].append((roll_timestamp.isoformat(), rp, balance, rp-last_rp, balance-last_balance))
-                    last_balance = balance
-                    last_rp = rp
-                    saveData()
-                    print('Operation logged\n')
+                            if(not btcbot.focusPage()):
+                                raise PageNotOpenException
+                            printScreen("Script paused", btcbot)
+                            printScreen(
+                                "No active bonus, press Enter to continue", btcbot)
+                            input()
+                            print('\033[1A', end='')
 
-                    pyautogui.keyDown('altleft'); pyautogui.press('tab'); pyautogui.keyUp('altleft')
-                    wait(checkRollTime(), 'for next roll')
-                    # print()
+                    btcbot.rollSequence(args.mode)
+                except PageNotOpenException:
+                    printScreen(
+                        stylize('Page not opened', colored.fore.RED), btcbot)
+                    printScreen('Waiting for user to open page', btcbot)
+                    time.sleep(LOAD_TIME)
+                    consecutive_errors += 0.2
+                    printScreen('Reloading page and trying again', btcbot)
+                except GameNotReady:
+                    printScreen(
+                        stylize('Game not ready', colored.fore.RED), btcbot)
+                    # consecutive_errors += 1
+                except GameFailException:
+                    printScreen(
+                        stylize('Game roll failed', colored.fore.RED), btcbot)
+                    consecutive_errors += 1
+                    printScreen('Reloading page and trying again')
+                except Exception as error:
+                    printScreen(
+                        stylize(f'Unknown error:{error}', colored.fore.RED), btcbot)
+                    consecutive_errors += 1
+                    printScreen('Reloading page and trying again')
+                    # print(error.with_traceback())
+                    # raise ExitException
                 else:
-                    print(stylize('Game roll failed', fore.RED))
-                    print('Reloading page and trying again')
-                    # pyautogui.press('f5')
-                #print()
-                
-    
+                    printScreen(stylize('Game roll successful at ' + datetime.fromisoformat(
+                        btcbot.current_state.timestamp).strftime('%H:%M:%S'), colored.fore.GREEN), btcbot)
+
+                    logger.updateState(btcbot.current_state)
+                    btcbot.account.total_rolls += 1
+                    # if btc.account.id in logs:
+                    #     logs[btc.account.id].append(log)
+                    # else:
+                    #     logs[btc.account.id] = [log]
+                    saveData()
+                    saveLogs()
+                    printScreen('Roll logged', btcbot)
+                    consecutive_errors = 0
+
+                if(consecutive_errors > 10):
+                    printScreen(stylize(
+                        'Ending script, failed too many times', colored.fore.RED), btcbot)
+                    raise ExitException
+
+        elif args.action == action.CONFIG:
+            if(args.list):
+                if settings:
+                    printScreen("Saved user settings:")
+                    for sett in settings:
+                        printScreen(f"{sett}")
+                else:
+                    printScreen("No settings saved")
+                raise ExitException
+
+            printScreen(
+                f'Setting click positions for {resolution} resolution')
+            printScreen(WS)
+
+            for i in range(LOAD_TIME*10, 0, -1):
+                current = pyautogui.position()
+                printScreen('Mouse over CAPTCHA checkbox position and wait %.1f seconds (%d, %d)'
+                            % (i/10, current.x, current.y), overhide=True)
+                time.sleep(0.1)
+            captcha_position = pyautogui.position()
+            printScreen('CAPTCHA position set at (%d, %d)' %
+                        captcha_position, overhide=True)
+            printScreen(WS)
+
+            for i in range(LOAD_TIME*10, 0, -1):
+                current = pyautogui.position()
+                printScreen('Mouse over ROLL button position and wait %.1f seconds (%d, %d)'
+                            % (i/10, current.x, current.y), overhide=True)
+                time.sleep(0.1)
+            roll_position = pyautogui.position()
+            printScreen('ROLL position set at (%d, %d)' %
+                        roll_position, overhide=True)
+
+            sett_i = next((i for i, s in enumerate(settings)
+                           if s.resolution == resolution), None)
+            if(sett_i != None):
+                printScreen(f'Updating setting {settings[sett_i].resolution}')
+                settings[sett_i] = Setting(
+                    resolution, roll_position, captcha_position)
+            else:
+                printScreen(f'New setting {settings[sett_i].resolution}')
+                settings.append(
+                    Setting(resolution, roll_position, captcha_position))
+            saveData()
+            printScreen(f'Settings saved {sett_i}')
+
+        elif args.action == action.USERS:
+            if(args.cookie):
+                # btc.setAccount(Account(cookie=args.cookie))
+                # btcbot = BTCBot()
+                acc = Account(cookie=args.cookie)
+                accounts.append(acc)
+                if not acc.id in logs:
+                    logs[acc.id] = [
+                        State(datetime.today().isoformat(), 0.0, 0, 1.0)]
+                saveData()
+                saveLogs()
+                printScreen(f"{acc} created")
+            if accounts:
+                printScreen("Saved user accounts:")
+                for idx, user in enumerate(accounts):
+                    printScreen(f"{idx+1} - {user}")
+            else:
+                printScreen("No user accounts saved")
+
+        elif args.action == action.REPORT:
+
+            # print(args)
+            printScreen("Generating log report")
+            setting = next(
+                (s for s in settings if s.resolution == resolution), None)
+            acc = accounts[args.user_index-1]
+            # print(accounts[args.user_index-1])
+            if not acc.id in logs:
+                logs[acc.id] = [
+                    State(datetime.today().isoformat(), 0.0, 0, 1.0)]
+            if(args.type=='csv'):
+                f = open(f'logs{acc.id}.csv', 'w')
+                for log in logs[acc.id]:
+                    f.write('%s, %.8f, %d, %.2f, %.8f, %d, %.2f\n'%log)
+                printScreen(f"Report saved on \'logs{acc.id}.csv\'")
+                f.close()
+            if(args.type=='plot'):
+                import numpy as np
+                import matplotlib.pyplot as plt
+                timestamps = [datetime.fromisoformat(l[0]) for l in logs[acc.id]]
+                values = [l[2] for l in logs[acc.id]]
+                # print(data)
+                plt.plot(timestamps, values)
+                plt.gcf().autofmt_xdate()
+                plt.show()
+            else:
+                logger = Logger(acc, logs[acc.id])
+                btcbot = BTCBot(acc, logger, setting)
+                printScreen("Report loaded", btcbot)
+        elif args.action == action.TEST:
+            printScreen('Running test sequence')
+
+            setting = next(
+                (s for s in settings if s.resolution == resolution), None)
+            acc = accounts[0]
+            # print(accounts[args.user_index-1])
+            if not acc.id in logs:
+                logs[acc.id] = [
+                    State(datetime.today().isoformat(), 0.0, 0, 1.0)]
+            logger = Logger(acc, logs[acc.id])
+            btcbot = BTCBot(acc, logger, setting)
+            print(btcbot.active_rp_bonus, btcbot.bonus_countdown)
+
+    except ExitException as e:
+        printScreen(f'Script ended {e}')
     except KeyboardInterrupt:
-        print ('\nScript ended by user!')        
+        printScreen('Script ended by user!')
