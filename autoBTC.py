@@ -352,11 +352,11 @@ if __name__ == '__main__':
                 settings[sett_i] = Setting(
                     resolution, roll_position, captcha_position)
             else:
-                printScreen(f'New setting {settings[sett_i].resolution}')
+                printScreen(f'New setting {resolution}')
                 settings.append(
                     Setting(resolution, roll_position, captcha_position))
             saveData()
-            printScreen(f'Settings saved {sett_i}')
+            printScreen(f'Settings saved {resolution}')
 
         elif args.action == action.USERS:
             if(args.cookie):
