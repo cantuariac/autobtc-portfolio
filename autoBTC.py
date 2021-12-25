@@ -105,7 +105,7 @@ class action:
     AUTO = 'auto'
     MANUAL = 'manual'
     CSV = 'csv'
-    PLOT = 'plot'
+    PLOTB = 'plotb'
 
 
 if __name__ == '__main__':
@@ -158,8 +158,8 @@ if __name__ == '__main__':
     type_report = report.add_subparsers(title='type')
     type_report.add_parser('csv').add_argument(
         'type', action='store_const', const='csv')
-    type_report.add_parser(action.PLOT).add_argument(
-        'type', action='store_const', const=action.PLOT)
+    type_report.add_parser(action.PLOTB).add_argument(
+        'type', action='store_const', const=action.PLOTB)
 
     test = command_parser.add_parser('test',
                                      help="test script")
@@ -394,11 +394,11 @@ if __name__ == '__main__':
                     f.write('%s, %.8f, %d, %.2f, %.8f, %d, %.2f\n'%log)
                 printScreen(f"Report saved on \'logs{acc.id}.csv\'")
                 f.close()
-            if(args.type=='plot'):
+            if(args.type==action().PLOTB):
                 import numpy as np
                 import matplotlib.pyplot as plt
                 timestamps = [datetime.fromisoformat(l[0]) for l in logs[acc.id]]
-                values = [l[2] for l in logs[acc.id]]
+                values = [l[1] for l in logs[acc.id]]
                 # print(data)
                 plt.plot(timestamps, values)
                 plt.gcf().autofmt_xdate()
