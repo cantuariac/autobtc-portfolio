@@ -77,7 +77,8 @@ def loadLogs():
         logs[id] = [ChangeLog(*log) for log in logs[id]]
     fd.close()
 
-
+def weektag(date : datetime.date):
+    return f"{date.year}-{date.isocalendar()[1]}"
 
 def report():
     
@@ -97,9 +98,56 @@ def report():
         saveLogs()
         print(f'Logs file created')
 
-    for log in logs[accounts[3].id][:10]:
-        print(log)
+    logs2:list = logs[accounts[2].id]
+    
+    daily = {}
+    fst_day_state = State(*logs2[0][:4])
+    day = datetime.fromisoformat(logs2[0].timestamp).date()
 
+    weekly = {}
+    fst_week_state = fst_day_state
+    week = weektag(day)
+
+    monthly = {}
+    fst_month_state = fst_day_state
+    month = day
+
+    for log in logs2[1:]:
+        log_date = datetime.fromisoformat(log.timestamp).date()
+
+        if day != log_date:
+            daily[day] = State(*log[:4]) - fst_day_state
+            fst_day_state = State(*log[:4])
+            day = log_date
+        
+            if weektag(log_date) != week:
+                weekly[week] = State(*log[:4]) - fst_week_state
+                fst_week_state = State(*log[:4])
+                week = weektag(log_date)
+            
+            if log_date.month != month.month or log_date.year != month.year:
+                monthly[month] = State(*log[:4]) - fst_month_state
+                fst_month_state = State(*log[:4])
+                month = log_date
+    
+    if day not in daily:
+        daily[day] = State(*log[:4]) - fst_day_state
+    if week not in weekly:
+        weekly[week] = State(*log[:4]) - fst_week_state
+    if month not in monthly:
+        monthly[month] = State(*log[:4]) - fst_month_state
+    
+    print("Daily Changelogs:")
+    for log in daily.values():
+        print(log)
+    
+    print("Weekly Changelogs:")
+    for week, log in weekly.items():
+        print(week, log)
+
+    print("Monthly Changelogs:")
+    for month, log in monthly.items():
+        print(month, log)
 
 
 if __name__ == '__main__':
