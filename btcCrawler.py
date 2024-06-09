@@ -26,7 +26,7 @@ width = 91
 height = 15
 WS = '⠀'
 NAME = WS*((width-7)//2)+stylize('autoBTC',
-                                 [colored.fore.GREEN, colored.style.BOLD])+WS*((width-7)//2)
+                                 [colored.Fore.GREEN, colored.Style.BOLD])+WS*((width-7)//2)
 LOAD_TIME = 10
 outputList = [[WS]]*height
 
@@ -37,9 +37,9 @@ def coloredTag(txt, color): return fg(color)+'▕'+style.RESET+style.BOLD + \
 
 def colorChange(value, base=0, format='{:+}'):
     if value > base:
-        return stylize(format.format(value), colored.fore.GREEN)
+        return stylize(format.format(value), colored.Fore.GREEN)
     elif value < base:
-        return stylize(format.format(value), colored.fore.RED)
+        return stylize(format.format(value), colored.Fore.RED)
     else:
         return format.format(value)
 
@@ -353,7 +353,7 @@ def printScreen(output=None, btcbot: BTCBot = None, clear=True, overhide=False):
                   colorChange(btcbot.logger.day_change.rp_change),
                   colorChange(btcbot.logger.session_change.rp_change),
                   colorChange(btcbot.logger.last_change.rp_change)]  # ,
-        # stylize(f'{btcbot.active_rp_bonus} for {btcbot.bonus_countdown//60//60}h', colored.fore.GREEN) if btcbot.active_rp_bonus else '']
+        # stylize(f'{btcbot.active_rp_bonus} for {btcbot.bonus_countdown//60//60}h', colored.Fore.GREEN) if btcbot.active_rp_bonus else '']
 
         bonus_row = [
             'Bônus%',

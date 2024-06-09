@@ -200,20 +200,20 @@ if __name__ == '__main__':
         if args.action == action.RUN:
             if(not settings):
                 printScreen(
-                    stylize('Click positions not configured', colored.fore.RED))
+                    stylize('Click positions not configured', colored.Fore.RED))
                 raise ExitException
 
             setting = next(
                 (s for s in settings if s.resolution == resolution), None)
             if(not setting):
                 printScreen(
-                    stylize('Click positions not configured for resolution '+resolution, colored.fore.RED))
+                    stylize('Click positions not configured for resolution '+resolution, colored.Fore.RED))
                 raise ExitException
             tags.append(setting.resolution)
 
             if(not accounts):
                 printScreen(
-                    stylize('No accounts saved', colored.fore.RED))
+                    stylize('No accounts saved', colored.Fore.RED))
                 raise ExitException
 
             # btc.setting = settings[resolution]
@@ -271,30 +271,30 @@ if __name__ == '__main__':
                     btcbot.rollSequence(args.mode)
                 except PageNotOpenException:
                     printScreen(
-                        stylize('Page not opened', colored.fore.RED), btcbot)
+                        stylize('Page not opened', colored.Fore.RED), btcbot)
                     printScreen('Waiting for user to open page', btcbot)
                     time.sleep(LOAD_TIME)
                     consecutive_errors += 0.2
                     printScreen('Reloading page and trying again', btcbot)
                 except GameNotReady:
                     printScreen(
-                        stylize('Game not ready', colored.fore.RED), btcbot)
+                        stylize('Game not ready', colored.Fore.RED), btcbot)
                     # consecutive_errors += 1
                 except GameFailException:
                     printScreen(
-                        stylize('Game roll failed', colored.fore.RED), btcbot)
+                        stylize('Game roll failed', colored.Fore.RED), btcbot)
                     consecutive_errors += 1
                     printScreen('Reloading page and trying again')
                 except Exception as error:
                     printScreen(
-                        stylize(f'Unknown error:{error}', colored.fore.RED), btcbot)
+                        stylize(f'Unknown error:{error}', colored.Fore.RED), btcbot)
                     consecutive_errors += 1
                     printScreen('Reloading page and trying again')
                     # print(error.with_traceback())
                     # raise ExitException
                 else:
                     printScreen(stylize('Game roll successful at ' + datetime.fromisoformat(
-                        btcbot.current_state.timestamp).strftime('%H:%M:%S'), colored.fore.GREEN), btcbot)
+                        btcbot.current_state.timestamp).strftime('%H:%M:%S'), colored.Fore.GREEN), btcbot)
 
                     logger.updateState(btcbot.current_state)
                     btcbot.account.total_rolls += 1
@@ -309,7 +309,7 @@ if __name__ == '__main__':
 
                 if(consecutive_errors > 10):
                     printScreen(stylize(
-                        'Ending script, failed too many times', colored.fore.RED), btcbot)
+                        'Ending script, failed too many times', colored.Fore.RED), btcbot)
                     raise ExitException
 
         elif args.action == action.CONFIG:
@@ -352,11 +352,11 @@ if __name__ == '__main__':
                 settings[sett_i] = Setting(
                     resolution, roll_position, captcha_position)
             else:
-                printScreen(f'New setting {settings[sett_i].resolution}')
+                printScreen(f'New setting {resolution}')
                 settings.append(
                     Setting(resolution, roll_position, captcha_position))
             saveData()
-            printScreen(f'Settings saved {sett_i}')
+            printScreen(f'Settings saved {resolution}')
 
         elif args.action == action.USERS:
             if(args.cookie):
